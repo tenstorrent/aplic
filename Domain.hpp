@@ -5,6 +5,7 @@
 #include <vector>
 #include <memory>
 #include <cassert>
+#include <functional>
 
 
 namespace TT_APLIC
@@ -370,6 +371,13 @@ namespace TT_APLIC
 	(SM(id) == SM::Level0 or SM(id) == SM::Level1);
     }
 
+    /// Define a callback function for the domain to deliver an interrupt to a
+    /// hart. When an interupt becomes active (ready for delivery), the domain
+    /// will call this function which will presumably set the M/S external
+    /// interrupt pending bit in the MIP CSR of that hart.
+    void setDeliverMethod(std::function<bool(unsigned hartIx, bool machine)> func)
+    { deliveryFunc_ = func; }
+
   protected:
 
     /// Set the interrupt pending bit of the given id. Return true if
@@ -441,6 +449,10 @@ namespace TT_APLIC
     std::shared_ptr<Domain> parent_;
     std::vector<uint32_t> active_;  // 32 words, parallel to setip0-setip31
     std::vector<uint32_t> inverted_;  // 32 words, parallel to setip0-setip31
+
+    /// Callback to deliver an external interrupt to a hart.
+    std::function<bool(unsigned hartIx, bool machine)> deliveryFunc_ = nullptr;
+
   };
 
 }
