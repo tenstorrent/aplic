@@ -240,8 +240,9 @@ Domain::setSourceState(unsigned id, bool state)
   if (id >= interruptCount_ or id == 0)
     return false;
 
-  if (isDelegated(id))
-    return child_->setSourceState(id, state);
+  unsigned childIx = 0;
+  if (isDelegated(id, childIx))
+    return children_.at(childIx)->setSourceState(id, state);
 
   // Determine interrupt target and priority.
   using CN = DomainCsrNumber;
@@ -273,6 +274,27 @@ Domain::isDelegated(unsigned id) const
   Sourcecfg sc{configVal};
   if (sc.d_)
     return true;
+  return false;
+}
+
+
+bool
+Domain::isDelegated(unsigned id, unsigned& childIx) const
+{
+  if (id >= interruptCount_ or id == 0)
+    return false;
+
+  using CN = DomainCsrNumber;
+  CN cn = advance(CN::Sourcecfg1, id - 1);
+
+  // Check if source is delegated.
+  auto configVal = csrs_.at(unsigned(cn)).read();
+  Sourcecfg sc{configVal};
+  if (sc.d_)
+    {
+      childIx = sc.child_;
+      return true;
+    }
   return false;
 }
 

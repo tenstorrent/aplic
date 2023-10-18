@@ -117,7 +117,7 @@ namespace TT_APLIC
 
     struct   // Second variant
     {
-      unsigned child_ : 9;    // Child index
+      unsigned child_ : 9;    // Child index (relative to parent)
       unsigned d_     : 1;    // Delegate
       unsigned res0_  : 22;
     };
@@ -315,13 +315,17 @@ namespace TT_APLIC
     bool initiateInterrupt(unsigned id);
 
     /// Set the given domain as a child of this domain.
-    void setChild(std::shared_ptr<Domain> child)
-    { assert(child.get() != this); child_ = child; child->parent_.reset(this); }
+    void addChild(std::shared_ptr<Domain> child)
+    {
+      assert(child.get() != this);
+      assert(not child->parent_);
+      children_.push_back(child); child->parent_.reset(this);
+    }
 
     /// Return a pointer to the child domain or nullptr if this domain has
     /// no child.
-    std::shared_ptr<Domain> getChild() const
-    { return child_; }
+    std::shared_ptr<Domain> getChild(unsigned ix) const
+    { return ix < children_.size() ? children_.at(ix) : nullptr; }
 
     /// Return parent of this domain or nullptr if this is the root domain.
     std::shared_ptr<Domain> getParent() const
@@ -330,6 +334,12 @@ namespace TT_APLIC
     /// Return true if given interrupt id is delegated to a child domain.
     /// Return false if id is out of bounds.
     bool isDelegated(unsigned id) const;
+
+    /// Return true if given interrupt id is delegated to a child domain setting
+    /// childIx to the index of that child. Return false leaving childIx
+    /// unmodified if id is out of bounds or if the interrupt id is not
+    /// delegated.
+    bool isDelegated(unsigned id, unsigned& childIx) const;
 
     /// Set the state of the source with the given id.
     bool setSourceState(unsigned id, bool state);
@@ -378,15 +388,18 @@ namespace TT_APLIC
     /// for the target host will be updated as a side effect.
     bool setInterruptPending(unsigned id, bool flag);
 
-    /// Return true if this domain targets machine privilege: If root domain or
-    /// domain has a child, then its privilege is machine; otherwise, it is
-    /// supervisor.
+    /// Return true if this domain targets machine privilege.
     bool isMachinePrivilege() const
-    { return isRoot() or not isLeaf(); }
+    { return isMachine_; }
+
+    /// Set the privilege level of this domain to machine if flag is true;
+    /// otherwise set it to supervisor privilege.
+    void setMachinePrivilege(bool flag)
+    { isMachine_ = flag; }
 
     /// Return true if this is domain is a leaf.
     bool isLeaf() const
-    { return not getChild(); }
+    { return children_.empty(); }
 
     /// Return true if this is domain is a root domain.
     bool isRoot() const
@@ -420,10 +433,11 @@ namespace TT_APLIC
     unsigned hartCount_ = 0;
     unsigned interruptCount_ = 0;
     bool hasIdc_ = false;
+    bool isMachine_ = true;   // Machine privilege.
 
     std::vector<DomainCsr> csrs_;
     std::vector<Idc> idcs_;
-    std::shared_ptr<Domain> child_;
+    std::vector<std::shared_ptr<Domain>> children_;
     std::shared_ptr<Domain> parent_;
     std::vector<uint32_t> active_;  // 32 words, parallel to setip0-setip31
     std::vector<uint32_t> inverted_;  // 32 words, parallel to setip0-setip31
