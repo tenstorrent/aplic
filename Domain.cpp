@@ -7,16 +7,19 @@ Domain::read(uint64_t addr, unsigned size, uint64_t& value) const
 {
   value = 0;
 
-  if ((addr & 3) != 0 or size != 4)
+  unsigned reqSize = DomainCsr::size();  // Required size.
+
+  // Check size and alignment.
+  if (size != reqSize or (addr & (reqSize - 1)) != 0)
     return false;
 
   if (addr < addr_ or addr - addr_ >= size)
     return false;
 
-  uint64_t wordIx = (addr - addr_) / 4;
-  if (wordIx < csrs_.size())
+  uint64_t itemIx = (addr - addr_) / reqSize;
+  if (itemIx < csrs_.size())
     {
-      value = csrs_.at(wordIx).read();
+      value = csrs_.at(itemIx).read();
       return true;
     }
 
@@ -27,9 +30,9 @@ Domain::read(uint64_t addr, unsigned size, uint64_t& value) const
   if (idcIndex < idcs_.size())
     {
       const Idc& idc = idcs_.at(idcIndex);
-      uint64_t idcWordCount = sizeof(idc) / 4;
-      uint64_t idcWord = wordIx % idcWordCount;
-      switch (idcWord)
+      size_t idcItemCount = sizeof(idc) / sizeof(idc.idelivery_);
+      size_t idcItemIx = itemIx % idcItemCount;
+      switch (idcItemIx)
 	{
 	case 0  :
 	  value = idc.idelivery_;
@@ -64,61 +67,69 @@ Domain::write(uint64_t addr, unsigned size, uint64_t value)
 {
   using CN = DomainCsrNumber;
 
-  if ((addr & 3) != 0 or size != 4)
+  unsigned reqSize = DomainCsr::size();  // Required size.
+
+  // Check size and alignment.
+  if (size != reqSize or (addr & (reqSize - 1)) != 0)
     return false;
 
   if (addr < addr_ or addr - addr_ >= size)
     return false;
 
-  uint64_t wordIx = (addr - addr_) / 4;
-  if (wordIx < csrs_.size())
+  unsigned bitsPerItem = DomainCsr::size()*8;
+
+  uint64_t itemIx = (addr - addr_) / reqSize;
+  if (itemIx < csrs_.size())
     {
-      if (wordIx >= unsigned(CN::Sourcecfg1) and
-	  wordIx <= unsigned(CN::Sourcecfg1023))
+      if (itemIx >= unsigned(CN::Sourcecfg1) and
+	  itemIx <= unsigned(CN::Sourcecfg1023))
 	{
 	  if (isLeaf())
 	    value = 0;
 	}
 
-      if (wordIx >= unsigned(CN::Setip0) and wordIx <= unsigned(CN::Setip31))
+      if (itemIx >= unsigned(CN::Setip0) and itemIx <= unsigned(CN::Setip31))
 	{
-	  unsigned id0 = (wordIx - unsigned(CN::Setip0)) * 32;
-	  for (unsigned bitIx = 0; bitIx < 32; ++bitIx)
+	  unsigned id0 = (itemIx - unsigned(CN::Setip0)) * bitsPerItem;
+	  for (unsigned bitIx = 0; bitIx < bitsPerItem; ++bitIx)
 	    if ((value >> bitIx) & 1)
 	      trySetIp(id0 + bitIx);
 	  return true;
 	}
-      else if (wordIx == unsigned(CN::Setipnum))
+      else if (itemIx == unsigned(CN::Setipnum))
 	{
 	  trySetIp(value);  // Value is the interrupt id.
 	  return true;
 	}
-      if (wordIx >= unsigned(CN::Inclrip0) and wordIx <= unsigned(CN::Inclrip31))
+      if (itemIx >= unsigned(CN::Inclrip0) and itemIx <= unsigned(CN::Inclrip31))
 	{
-	  unsigned id0 = (wordIx - unsigned(CN::Inclrip0)) * 32;
-	  for (unsigned bitIx = 0; bitIx < 32; ++bitIx)
+	  unsigned id0 = (itemIx - unsigned(CN::Inclrip0)) * bitsPerItem;
+	  for (unsigned bitIx = 0; bitIx < bitsPerItem; ++bitIx)
 	    if ((value >> bitIx) & 1)
 	      tryClearIp(id0 + bitIx);
 	  return true;
 	}
-      else if (wordIx == unsigned(CN::Clripnum))
+      else if (itemIx == unsigned(CN::Clripnum))
 	{
 	  tryClearIp(value);  // Value is the interrupt id.
 	  return true;
 	}
 
-      csrs_.at(wordIx).write(value);
+      csrs_.at(itemIx).write(value);
 
       // Writing sourcecfg may change a source status. Cache status.
-      if (wordIx >= unsigned(CN::Sourcecfg1) and
-	  wordIx <= unsigned(CN::Sourcecfg1023))
+      if (itemIx >= unsigned(CN::Sourcecfg1) and
+	  itemIx <= unsigned(CN::Sourcecfg1023))
 	{
-	  unsigned id = wordIx - unsigned(CN::Sourcecfg1) + 1;
-	  unsigned ix = id / 32;
+	  unsigned id = itemIx - unsigned(CN::Sourcecfg1) + 1;
+	  unsigned ix = id / bitsPerItem;
+	  unsigned bitIx = id % bitsPerItem;
 	  bool flag = isActive(id);
-	  uint32_t mask = uint32_t(1) << ix % 32;
+	  uint32_t mask = uint32_t(1) << bitIx;
 	  active_.at(ix) = flag ? active_.at(ix) | mask : active_.at(ix) & ~mask;
 	  inverted_.at(ix) = isInverted(id);
+	  if (flag)
+	    assert(0 && "Evalute source for interrupt delivery");
 	}
 
       return true;
@@ -131,9 +142,9 @@ Domain::write(uint64_t addr, unsigned size, uint64_t value)
   if (idcIndex < idcs_.size())
     {
       Idc& idc = idcs_.at(idcIndex);
-      uint64_t idcWordCount = sizeof(idc) / 4;
-      uint64_t idcWord = wordIx % idcWordCount;
-      switch (idcWord)
+      size_t idcItemCount = sizeof(idc) / sizeof(idc.idelivery_);
+      size_t idcItemIx = itemIx % idcItemCount;
+      switch (idcItemIx)
 	{
 	case 0  : idc.idelivery_  = value; break;
 	case 1  : idc.iforce_     = value; break;

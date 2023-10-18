@@ -251,8 +251,8 @@ namespace TT_APLIC
     { return name_; }
 
     /// Size in bytes of this CSR.
-    unsigned size() const
-    { return 4; }
+    static unsigned size()
+    { return sizeof(value_); }
 
     /// Offset from the domain address to the address of this CSR.
     unsigned offset() const
@@ -280,7 +280,7 @@ namespace TT_APLIC
   public:
 
     /// Aplic domain constants.
-    enum { IdcOffset = 0x4000, MaxId = 1023 };
+    enum { IdcOffset = 0x4000, EndId = 1024 };
 
     /// Default constructor.
     Domain()
@@ -288,7 +288,7 @@ namespace TT_APLIC
     { }
 
     /// Constructor. Interrupt count is one plus the largest supported interrupt
-    /// id and mus be less than ore equal to 1024.
+    /// id and must be less than ore equal to EndId.
     Domain(uint64_t addr, uint64_t size, unsigned hartCount,
 	   unsigned interruptCount, bool hasIdc)
       : addr_(addr), size_(size), hartCount_(hartCount),
@@ -297,7 +297,7 @@ namespace TT_APLIC
     {
       defineCsrs();
       defineIdc();
-      assert(interruptCount <= MaxId + 1);
+      assert(interruptCount <= EndId);
     }
 
     /// Read a memory mapped register associated with this Domain. Return true
