@@ -80,25 +80,30 @@ Domain::write(uint64_t addr, unsigned size, uint64_t value)
 	    value = 0;
 	}
 
-      if (wordIx >= unsigned(CN::Setip0) and
-	  wordIx <= unsigned(CN::Setip31))
-	value = csrs_.at(wordIx).read() | (value & active_.at(wordIx));
+      if (wordIx >= unsigned(CN::Setip0) and wordIx <= unsigned(CN::Setip31))
+	{
+	  unsigned id0 = (wordIx - unsigned(CN::Setip0)) * 32;
+	  for (unsigned bitIx = 0; bitIx < 32; ++bitIx)
+	    if ((value >> bitIx) & 1)
+	      trySetIp(id0 + bitIx);
+	  return true;
+	}
       else if (wordIx == unsigned(CN::Setipnum))
 	{
-	  if (not isActive(value) or isLevelSensitive(value))
-	    return true;
-	  unsigned ix = unsigned(CN::Setip0) + value / 32;
-	  unsigned bit = value % 32;
-	  csrs_.at(ix).write(csrs_.at(ix).read() | (uint32_t(1) << bit));
+	  trySetIp(value);  // Value is the interrupt id.
+	  return true;
+	}
+      if (wordIx >= unsigned(CN::Inclrip0) and wordIx <= unsigned(CN::Inclrip31))
+	{
+	  unsigned id0 = (wordIx - unsigned(CN::Inclrip0)) * 32;
+	  for (unsigned bitIx = 0; bitIx < 32; ++bitIx)
+	    if ((value >> bitIx) & 1)
+	      tryClearIp(id0 + bitIx);
 	  return true;
 	}
       else if (wordIx == unsigned(CN::Clripnum))
 	{
-	  if (not isActive(value) or isLevelSensitive(value))
-	    return true;
-	  unsigned ix = unsigned(CN::Setip0) + value / 32;
-	  unsigned bit = value % 32;
-	  csrs_.at(ix).write(csrs_.at(ix).read() & ~(uint32_t(1) << bit));
+	  tryClearIp(value);  // Value is the interrupt id.
 	  return true;
 	}
 
@@ -172,7 +177,7 @@ Domain::defineCsrs()
   for (unsigned ix = 0; ix <= 31; ++ix)
     {
       std::string name = base + std::to_string(ix);
-      CN cn{unsigned(CN::Setip0) + ix};
+      CN cn = advance(CN::Setip0, ix);
       csrAt(cn) = DomainCsr(name, cn, 0, allOnes);
     }
   csrAt(CN::Setipnum) = DomainCsr("setipnum", CN::Setipnum, 0, allOnes);
@@ -181,7 +186,7 @@ Domain::defineCsrs()
   for (unsigned ix = 0; ix <= 31; ++ix)
     {
       std::string name = base + std::to_string(ix);
-      CN cn{unsigned(CN::Inclrip0) + ix};
+      CN cn = advance(CN::Inclrip0, + ix);
       csrAt(cn) = DomainCsr(name, cn, 0, allOnes);
     }
   csrAt(CN::Clripnum) = DomainCsr("clripnum", CN::Clripnum, 0, allOnes);
@@ -190,7 +195,7 @@ Domain::defineCsrs()
   for (unsigned ix = 0; ix <= 31; ++ix)
     {
       std::string name = base + std::to_string(ix);
-      CN cn{unsigned(CN::Setie0) + ix};
+      CN cn= advance(CN::Setie0, + ix);
       csrAt(cn) = DomainCsr(name, cn, 0, allOnes);
     }
   csrAt(CN::Setienum) = DomainCsr("setienum", CN::Setienum, 0, allOnes);
@@ -199,7 +204,7 @@ Domain::defineCsrs()
   for (unsigned ix = 0; ix <= 31; ++ix)
     {
       std::string name = base + std::to_string(ix);
-      CN cn{unsigned(CN::Clrie0) + ix};
+      CN cn = advance(CN::Clrie0, + ix);
       csrAt(cn) = DomainCsr(name, cn, 0, allOnes);
     }
   csrAt(CN::Clrienum) = DomainCsr("clrienum", CN::Clrienum, 0, allOnes);
@@ -212,7 +217,7 @@ Domain::defineCsrs()
   for (unsigned ix = 1; ix <= 1023; ++ix)
     {
       std::string name = base + std::to_string(ix);
-      CN cn{unsigned(CN::Target1) + ix - 1};
+      CN cn = advance(CN::Target1, ix - 1);
       csrAt(cn) = DomainCsr(name, cn, 0, allOnes);
     }
 }
@@ -232,60 +237,14 @@ Domain::setSourceState(unsigned id, bool state)
   CN ntc = advance(CN::Target1, id - 1);  // Number of target CSR.
   auto targetVal = csrAt(ntc).read();
   Target target{targetVal};
-  unsigned prio =  target.prio_;
-  unsigned hart = target.hart_;
 
   SourceMode mode = sourceMode(id);
-  bool activate = (mode == SourceMode::Edge1 or mode == SourceMode::Level1) == state;
 
-  // Mark/unmark interrupt pending.
-  CN nipc = advance(CN::Setip0, id);  // Number of inerrupt pending CSR.
-  uint32_t ipVal = csrAt(nipc).read();
-  uint32_t mask = uint32_t(1) << (id % 32);
-  ipVal = activate? (ipVal | mask) : (ipVal & ~mask);
-  csrAt(nipc).write(ipVal);
+  // Determine value of interrupt pending.
+  bool ip = (mode == SourceMode::Edge1 or mode == SourceMode::Level1) == state;
 
-  if (not hasIdc_)
-    {
-      assert(0 && "Implement: deliver MSI");
-      return true;
-    }
-
-  // Update top priority interrupt. Lower priority number wins.
-  // For tie, lower source id wins
-  auto& idc = idcs_.at(hart);
-  IdcTopi topi{idc.topi_};
-  unsigned topPrio = topi.prio_;
-  if (activate)
-    {
-      if (prio <= topPrio or (prio == topPrio and id < topi.id_))
-	{
-	  topi.prio_ = prio;
-	  topi.id_ = id;
-	  idc.topi_ = topi.value_;
-	}
-    }
-  else if (id == topi.id_)
-    {
-      // Interrupt that used to determine our top id went away. Re-compute
-      // top id.
-      bool found = false;
-      for (unsigned i = 1; i < interruptCount_; ++i)
-	{
-	  CN ntc = advance(CN::Target1, i - 1);
-	  uint32_t targetVal = csrAt(ntc).read();
-	  Target target{targetVal};
-	  if (target.hart_ == hart)
-	    if (not found or target.prio_ < topi.prio_)
-	      {
-		found = true;
-		topi.prio_ = target.prio_;
-		topi.id_ = i;
-	      }
-	}
-    }
-
-  return true;
+  // Set interrupt pending.
+  return setInterruptPending(id, ip);
 }
 
 
@@ -324,4 +283,127 @@ Domain::sourceMode(unsigned id) const
 
   /// Least significant 3 bits encode the source mode.
   return SourceMode{configVal & 7};
+}
+
+
+bool
+Domain::setInterruptPending(unsigned id, bool flag)
+{
+  if (id == 0 or id > interruptCount_ or isDelegated(id))
+    return false;
+
+  using CN = DomainCsrNumber;
+
+  CN cn = advance(CN::Setip0, id);  // Number of CSR containing interrupt pending bits.
+  unsigned bitIx = id % 32;
+  uint32_t mask = uint32_t(1) << bitIx;
+  uint32_t value = csrAt(cn).read();
+  bool prev = value & mask;
+  if (prev == flag)
+    return true;  // Value did not change.
+
+  // Update interrupt pending bit.
+  value &= ~mask;  // Clear bit.
+  if (flag)
+    value |= mask;
+
+  // Determine interrupt target and priority.
+  CN ntc = advance(CN::Target1, id - 1);  // Number of target CSR.
+  auto targetVal = csrAt(ntc).read();
+  Target target{targetVal};
+  unsigned prio =  target.prio_;
+  unsigned hart = target.hart_;
+
+  if (hasIdc_)
+    {
+      // Update top priority interrupt. Lower priority number wins.
+      // For tie, lower source id wins
+      auto& idc = idcs_.at(hart);
+      IdcTopi topi{idc.topi_};
+      unsigned topPrio = topi.prio_;
+      if (flag)
+	{
+	  if (prio <= topPrio or (prio == topPrio and id < topi.id_))
+	    {
+	      topi.prio_ = prio;
+	      topi.id_ = id;
+	    }
+	}
+      else if (id == topi.id_)
+	{
+	  // Interrupt that used to determine our top id went away. Re-compute
+	  // top id and priority in interrupt delivery control.
+	  topi.prio_ = 0;
+	  topi.id_ = 0;
+	  for (unsigned iid = 1; iid < interruptCount_; ++iid)
+	    {
+	      CN ntc = advance(CN::Target1, iid - 1);
+	      uint32_t targetVal = csrAt(ntc).read();
+	      Target target{targetVal};
+	      if (target.hart_ == hart)
+		if (topi.prio_ == 0 or target.prio_ < topi.prio_)
+		  {
+		    topi.prio_ = target.prio_;
+		    topi.id_ = iid;
+		  }
+	    }
+	}
+
+      idc.topi_ = topi.value_;  // Update IDC.
+      if (topi.prio_ < idc.ithreshold_)
+	assert(0);  // Poke EI bit in MIP
+    }
+  else
+    {
+      assert(0);
+      // Deliver using IMSIC
+    }
+
+  return true;
+}
+
+
+bool
+Domain::trySetIp(unsigned id)
+{
+  if (id == 0 or id >= interruptCount_ or isDelegated(id))
+    return false;
+
+  using CN = DomainCsrNumber;
+
+  uint32_t dcVal = csrAt(CN::Domaincfg).read();
+  Domaincfg dc{dcVal};
+
+  SourceMode mode = sourceMode(id);
+
+  if (mode == SourceMode::Level0 or mode == SourceMode::Level1)
+    {
+      if (not dc.dm_)
+	return false;  // Cannot set by a write in direct delivery mode
+    }
+
+  return setInterruptPending(id, true);
+}
+
+
+bool
+Domain::tryClearIp(unsigned id)
+{
+  if (id == 0 or id >= interruptCount_ or isDelegated(id))
+    return false;
+
+  using CN = DomainCsrNumber;
+
+  uint32_t dcVal = csrAt(CN::Domaincfg).read();
+  Domaincfg dc{dcVal};
+
+  SourceMode mode = sourceMode(id);
+
+  if (mode == SourceMode::Level0 or mode == SourceMode::Level1)
+    {
+      if (not dc.dm_)
+	return false;  // Cannot clear by a write in direct delivery mode
+    }
+
+  return setInterruptPending(id, false);
 }

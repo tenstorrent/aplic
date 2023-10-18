@@ -362,6 +362,22 @@ namespace TT_APLIC
 
   protected:
 
+    /// Set the interrupt pending bit of the given id. Return true if
+    /// sucessful. Return false if it is not possible to set the bit (see
+    /// secion 4.7 of the riscv-interrupt spec).
+    bool trySetIp(unsigned id);
+
+    /// Clear the interrupt pending bit of the given id. Return true if
+    /// sucessful. Return false if it is not possible to set the bit (see
+    /// secion 4.7 of the riscv-interrupt spec).
+    bool tryClearIp(unsigned id);
+
+    /// Set the interrupt pending bit corresonding to the given interrupt id to
+    /// flag. Return true on sucess and false if id is out of bounds. This has
+    /// no effect if the interrupt id is not active in this domain. The top id
+    /// for the target host will be updated as a side effect.
+    bool setInterruptPending(unsigned id, bool flag);
+
     /// Return true if this domain targets machine privilege: If root domain or
     /// domain has a child, then its privilege is machine; otherwise, it is
     /// supervisor.
