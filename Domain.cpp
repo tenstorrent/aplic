@@ -141,7 +141,7 @@ Domain::readIdc(uint64_t addr, unsigned size, uint64_t& value)
 
     case 3  :
       value = idc.topi_;
-      if (value >= idc.ithreshold_)
+      if (value >= idc.ithreshold_ and idc.ithreshold_ != 0)
 	value = 0;
       break;
 
@@ -179,7 +179,7 @@ Domain::writeIdc(uint64_t addr, unsigned size, uint64_t value)
   Idc& idc = idcs_.at(idcIndex);
   size_t idcItemCount = sizeof(idc) / sizeof(idc.idelivery_);
   uint64_t itemIx = (addr - (addr_ + IdcOffset)) / reqSize;
-  size_t idcItemIx = itemIx % idcItemCount;
+  size_t idcItemIx = itemIx % idcItemCount;  // Index of field with IDC.
   switch (idcItemIx)
     {
     case 0  :
@@ -187,7 +187,15 @@ Domain::writeIdc(uint64_t addr, unsigned size, uint64_t value)
       break;
 
     case 1  :
-      idc.iforce_ = value & 1;
+      {
+	CsrValue dcfgVal = csrAt(CsrNumber::Domaincfg).read();
+	Domaincfg dcfg{dcfgVal};
+
+	idc.iforce_ = value & 1;
+	if (idc.iforce_ and idc.topi_ == 0 and idc.idelivery_ and dcfg.ie_ and
+	    deliveryFunc_)
+	  deliveryFunc_(idcIndex, isMachinePrivilege());
+      }
       break;
 
     case 2  :
@@ -434,6 +442,9 @@ Domain::setInterruptPending(unsigned id, bool flag)
   if (prev == flag)
     return true;  // Value did not change.
 
+  CN neic = advance(CN::Setie0, id); // Number of interrupt enable CSR.
+  bool enabled = csrAt(neic).read() & mask;
+
   // Update interrupt pending bit.
   value &= ~mask;  // Clear bit.
   if (flag)
@@ -453,7 +464,7 @@ Domain::setInterruptPending(unsigned id, bool flag)
       auto& idc = idcs_.at(hart);
       IdcTopi topi{idc.topi_};
       unsigned topPrio = topi.prio_;
-      if (flag)
+      if (flag and enabled)
 	{
 	  if (prio <= topPrio or (prio == topPrio and id < topi.id_))
 	    {
@@ -461,7 +472,7 @@ Domain::setInterruptPending(unsigned id, bool flag)
 	      topi.id_ = id;
 	    }
 	}
-      else if (id == topi.id_)
+      else if (id == topi.id_ and not flag)
 	{
 	  // Interrupt that used to determine our top id went away. Re-compute
 	  // top id and priority in interrupt delivery control.
@@ -482,8 +493,11 @@ Domain::setInterruptPending(unsigned id, bool flag)
 	}
 
       idc.topi_ = topi.value_;  // Update IDC.
+
+      CsrValue dcfgVal = csrAt(CN::Domaincfg).read();
+      Domaincfg dcfg{dcfgVal};
       if ((topi.prio_ < idc.ithreshold_ or idc.ithreshold_ == 0) and
-	  idc.idelivery_ and deliveryFunc_)
+	  idc.idelivery_ and dcfg.ie_ and deliveryFunc_)
 	deliveryFunc_(hart, isMachinePrivilege());
     }
   else
@@ -504,7 +518,7 @@ Domain::trySetIp(unsigned id)
 
   using CN = CsrNumber;
 
-  uint32_t dcVal = csrAt(CN::Domaincfg).read();
+  CsrValue dcVal = csrAt(CN::Domaincfg).read();
   Domaincfg dc{dcVal};
 
   SourceMode mode = sourceMode(id);
@@ -527,7 +541,7 @@ Domain::tryClearIp(unsigned id)
 
   using CN = CsrNumber;
 
-  uint32_t dcVal = csrAt(CN::Domaincfg).read();
+  CsrValue dcVal = csrAt(CN::Domaincfg).read();
   Domaincfg dc{dcVal};
 
   SourceMode mode = sourceMode(id);
