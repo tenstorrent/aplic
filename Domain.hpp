@@ -11,8 +11,8 @@
 namespace TT_APLIC
 {
 
-  /// APLIC domain control ans status register enumeration
-  enum class DomainCsrNumber : uint32_t
+  /// APLIC domain control and status register enumeration
+  enum class CsrNumber : unsigned
     {
       Domaincfg,
       Sourcecfg1,
@@ -41,7 +41,11 @@ namespace TT_APLIC
     };
 
 
-  enum class SourceMode : uint32_t
+  /// Integer type used to represent a domain CSR value.
+  typedef uint32_t CsrValue;
+
+  /// Interrupt source mode.
+  enum class SourceMode : unsigned
     {
       Inactive = 0,
       Detached = 1,
@@ -56,23 +60,23 @@ namespace TT_APLIC
   /// for direct delivery (non message signaled).
   struct Idc
   {
-    uint32_t idelivery_= 0;
-    uint32_t iforce_ = 0;
-    uint32_t ithreshold_ = 0;
-    uint32_t topi_ = 0;
-    uint32_t claimi_ = 0;
-    uint32_t reserved_[3] = { 0, 0, 0 };
+    CsrValue idelivery_= 0;
+    CsrValue iforce_ = 0;
+    CsrValue ithreshold_ = 0;
+    CsrValue topi_ = 0;
+    CsrValue claimi_ = 0;
+    CsrValue reserved_[3] = { 0, 0, 0 };
   };
 
 
   /// Union to pack/unpack the topi field in Idc.
   union IdcTopi
   {
-    IdcTopi(uint32_t value)
+    IdcTopi(CsrValue value)
       : value_(value)
     { }
 
-    uint32_t value_;   // 1st variant
+    CsrValue value_;   // 1st variant
 
     struct   // 2nd variant
     {
@@ -87,11 +91,11 @@ namespace TT_APLIC
   /// Union to pack/unpack the domaincfg CSR.
   union Domaincfg
   {
-    Domaincfg(uint32_t value)
+    Domaincfg(CsrValue value)
       : value_(value)
     { }
 
-    uint32_t value_;    // First variant of union
+    CsrValue value_;    // First variant of union
 
     struct   // Second variant
     {
@@ -110,11 +114,11 @@ namespace TT_APLIC
   /// Union to pack/unpack the sourcecfg CSRs
   union Sourcecfg
   {
-    Sourcecfg(uint32_t value)
+    Sourcecfg(CsrValue value)
       : value_(value)
     { }
 
-    uint32_t value_;  // First variant of union
+    CsrValue value_;  // First variant of union
 
     struct   // Second variant
     {
@@ -128,11 +132,11 @@ namespace TT_APLIC
   /// Union to pack/unpack the mmsiaddrcfgh CSRs
   union Mmsiaddrcfgh
   {
-    Mmsiaddrcfgh(uint32_t value)
+    Mmsiaddrcfgh(CsrValue value)
       : value_(value)
     { }
 
-    uint32_t value_;
+    CsrValue value_;
 
     struct
     {
@@ -152,11 +156,11 @@ namespace TT_APLIC
   /// Union to pack/unpack the smsiaddrcfgh CSRs
   union Smsiaddrcfgh
   {
-    Smsiaddrcfgh(uint32_t value)
+    Smsiaddrcfgh(CsrValue value)
       : value_(value)
     { }
 
-    uint32_t value_;
+    CsrValue value_;
 
     struct
     {
@@ -171,11 +175,11 @@ namespace TT_APLIC
   /// Union to pack/unpack the genmsi CSR
   union Genmsi
   {
-    Genmsi(uint32_t value)
+    Genmsi(CsrValue value)
       : value_(value)
     { }
 
-    uint32_t value_;
+    CsrValue value_;
 
     struct
     {
@@ -191,11 +195,11 @@ namespace TT_APLIC
   /// Union to pack/unpack the target CSRs
   union Target
   {
-    Target(uint32_t value)
+    Target(CsrValue value)
       : value_(value)
     { }
 
-    uint32_t value_;
+    CsrValue value_;
 
     struct
     {
@@ -209,11 +213,11 @@ namespace TT_APLIC
   /// Union to pack/unpack the topi register in an IDC structure.
   union Topi
   {
-    Topi(uint32_t value)
+    Topi(CsrValue value)
       : value_(value)
     { }
 
-    uint32_t value_;
+    CsrValue value_;
 
     struct
     {
@@ -233,18 +237,18 @@ namespace TT_APLIC
     /// Default constructor.
     DomainCsr() = default;
 
-    DomainCsr(const std::string& name, DomainCsrNumber csrn,
-	      uint32_t reset, uint32_t mask)
+    DomainCsr(const std::string& name, CsrNumber csrn,
+	      CsrValue reset, CsrValue mask)
       : name_(name), csrn_(csrn), reset_(reset), value_(reset), mask_(mask)
     { }
 
     /// Return current value of this CSR.
-    uint32_t read() const
+    CsrValue read() const
     { return value_; }
 
     /// Set value of this CSR to the given value after masking it with
     /// the associated write mask.
-    void write(uint32_t value)
+    void write(CsrValue value)
     { value_ = value & mask_; }
 
     /// Return the name of this CSR.
@@ -260,7 +264,7 @@ namespace TT_APLIC
     { return unsigned(csrn_) * size(); }
 
     /// Return the write maks of thie CSR.
-    uint32_t mask() const
+    CsrValue mask() const
     { return mask_; }
 
   protected:
@@ -268,10 +272,10 @@ namespace TT_APLIC
   private:
 
     std::string name_;
-    DomainCsrNumber csrn_ = DomainCsrNumber{0};
-    uint32_t reset_ = 0;
-    uint32_t value_ = 0;
-    uint32_t mask_ = 0;
+    CsrNumber csrn_ = CsrNumber{0};
+    CsrValue reset_ = 0;
+    CsrValue value_ = 0;
+    CsrValue mask_ = 0;
   };
 
 
@@ -281,7 +285,7 @@ namespace TT_APLIC
   public:
 
     /// Aplic domain constants.
-    enum { IdcOffset = 0x4000, EndId = 1024 };
+    enum { IdcOffset = 0x4000, EndId = 1024, EndHart = 16384 };
 
     /// Default constructor.
     Domain()
@@ -299,6 +303,7 @@ namespace TT_APLIC
       defineCsrs();
       defineIdc();
       assert(interruptCount <= EndId);
+      assert(hartCount <= EndHart);
     }
 
     /// Read a memory mapped register associated with this Domain. Return true
@@ -414,7 +419,7 @@ namespace TT_APLIC
     { return not getParent(); }
 
     /// Return CSR having the given number n.
-    DomainCsr& csrAt(DomainCsrNumber n)
+    DomainCsr& csrAt(CsrNumber n)
     { return csrs_.at(unsigned(n)); }
 
     /// Define the control and status memory mapped registers associated with
@@ -427,12 +432,12 @@ namespace TT_APLIC
     void defineIdc();
 
     /// Advance a csr number by the given amount (add amount to number).
-    static DomainCsrNumber advance(DomainCsrNumber csrn, uint32_t amount)
-    { return DomainCsrNumber(uint32_t(csrn) + amount); }
+    static CsrNumber advance(CsrNumber csrn, uint32_t amount)
+    { return CsrNumber(CsrValue(csrn) + amount); }
 
     /// Advance a csr number by the given amount (add amount to number).
-    static DomainCsrNumber advance(DomainCsrNumber csrn, int32_t amount)
-    { return DomainCsrNumber(uint32_t(csrn) + amount); }
+    static CsrNumber advance(CsrNumber csrn, int32_t amount)
+    { return CsrNumber(CsrValue(csrn) + amount); }
 
   private:
 
@@ -447,8 +452,8 @@ namespace TT_APLIC
     std::vector<Idc> idcs_;
     std::vector<std::shared_ptr<Domain>> children_;
     std::shared_ptr<Domain> parent_;
-    std::vector<uint32_t> active_;  // 32 words, parallel to setip0-setip31
-    std::vector<uint32_t> inverted_;  // 32 words, parallel to setip0-setip31
+    std::vector<CsrValue> active_;    // 32 items, parallel to setip0-setip31
+    std::vector<CsrValue> inverted_;  // 32 items, parallel to setip0-setip31
 
     /// Callback to deliver an external interrupt to a hart.
     std::function<bool(unsigned hartIx, bool machine)> deliveryFunc_ = nullptr;

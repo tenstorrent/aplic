@@ -7,7 +7,7 @@ Domain::read(uint64_t addr, unsigned size, uint64_t& value) const
 {
   value = 0;
 
-  unsigned reqSize = DomainCsr::size();  // Required size.
+  unsigned reqSize = sizeof(CsrValue);  // Required size.
 
   // Check size and alignment.
   if (size != reqSize or (addr & (reqSize - 1)) != 0)
@@ -65,9 +65,9 @@ Domain::read(uint64_t addr, unsigned size, uint64_t& value) const
 bool
 Domain::write(uint64_t addr, unsigned size, uint64_t value)
 {
-  using CN = DomainCsrNumber;
+  using CN = CsrNumber;
 
-  unsigned reqSize = DomainCsr::size();  // Required size.
+  unsigned reqSize = sizeof(CsrValue);  // Required size.
 
   // Check size and alignment.
   if (size != reqSize or (addr & (reqSize - 1)) != 0)
@@ -76,7 +76,7 @@ Domain::write(uint64_t addr, unsigned size, uint64_t value)
   if (addr < addr_ or addr - addr_ >= size)
     return false;
 
-  unsigned bitsPerItem = DomainCsr::size()*8;
+  unsigned bitsPerItem = reqSize*8;
 
   uint64_t itemIx = (addr - addr_) / reqSize;
   if (itemIx < csrs_.size())
@@ -125,7 +125,7 @@ Domain::write(uint64_t addr, unsigned size, uint64_t value)
 	  unsigned ix = id / bitsPerItem;
 	  unsigned bitIx = id % bitsPerItem;
 	  bool flag = isActive(id);
-	  uint32_t mask = uint32_t(1) << bitIx;
+	  CsrValue mask = CsrValue(1) << bitIx;
 	  active_.at(ix) = flag ? active_.at(ix) | mask : active_.at(ix) & ~mask;
 	  inverted_.at(ix) = isInverted(id);
 	  if (flag)
@@ -163,11 +163,11 @@ Domain::write(uint64_t addr, unsigned size, uint64_t value)
 void
 Domain::defineCsrs()
 {
-  using CN = DomainCsrNumber;
+  using CN = CsrNumber;
 
   csrs_.resize(size_t(CN::Target1023) + 1);
 
-  uint32_t allOnes = ~uint32_t(0);
+  CsrValue allOnes = ~CsrValue(0);
 
   csrAt(CN::Domaincfg) = DomainCsr("domaincfg", CN::Domaincfg, 0, allOnes);
 
@@ -245,7 +245,7 @@ Domain::setSourceState(unsigned id, bool state)
     return children_.at(childIx)->setSourceState(id, state);
 
   // Determine interrupt target and priority.
-  using CN = DomainCsrNumber;
+  using CN = CsrNumber;
   CN ntc = advance(CN::Target1, id - 1);  // Number of target CSR.
   auto targetVal = csrAt(ntc).read();
   Target target{targetVal};
@@ -266,7 +266,7 @@ Domain::isDelegated(unsigned id) const
   if (id >= interruptCount_ or id == 0)
     return false;
 
-  using CN = DomainCsrNumber;
+  using CN = CsrNumber;
   CN cn = advance(CN::Sourcecfg1, id - 1);
 
   // Check if source is delegated.
@@ -284,7 +284,7 @@ Domain::isDelegated(unsigned id, unsigned& childIx) const
   if (id >= interruptCount_ or id == 0)
     return false;
 
-  using CN = DomainCsrNumber;
+  using CN = CsrNumber;
   CN cn = advance(CN::Sourcecfg1, id - 1);
 
   // Check if source is delegated.
@@ -305,7 +305,7 @@ Domain::sourceMode(unsigned id) const
   if (id >= interruptCount_ or id == 0)
     return SourceMode::Inactive;
 
-  using CN = DomainCsrNumber;
+  using CN = CsrNumber;
   CN cn = advance(CN::Sourcecfg1, id - 1);
 
   // Check if source is delegated.
@@ -325,11 +325,12 @@ Domain::setInterruptPending(unsigned id, bool flag)
   if (id == 0 or id > interruptCount_ or isDelegated(id))
     return false;
 
-  using CN = DomainCsrNumber;
+  using CN = CsrNumber;
 
   CN cn = advance(CN::Setip0, id);  // Number of CSR containing interrupt pending bits.
-  unsigned bitIx = id % 32;
-  uint32_t mask = uint32_t(1) << bitIx;
+  unsigned bitsPerItem = sizeof(CsrValue) * 8;
+  unsigned bitIx = id % bitsPerItem;
+  CsrValue mask = CsrValue(1) << bitIx;
   uint32_t value = csrAt(cn).read();
   bool prev = value & mask;
   if (prev == flag)
@@ -383,13 +384,13 @@ Domain::setInterruptPending(unsigned id, bool flag)
 	}
 
       idc.topi_ = topi.value_;  // Update IDC.
-      if (topi.prio_ < idc.ithreshold_)
-	assert(0);  // Poke EI bit in MIP
+      if (topi.prio_ < idc.ithreshold_ and deliveryFunc_)
+	deliveryFunc_(hart, isMachinePrivilege());
     }
   else
     {
-      assert(0);
       // Deliver using IMSIC
+      assert(0);
     }
 
   return true;
@@ -402,7 +403,7 @@ Domain::trySetIp(unsigned id)
   if (id == 0 or id >= interruptCount_ or isDelegated(id))
     return false;
 
-  using CN = DomainCsrNumber;
+  using CN = CsrNumber;
 
   uint32_t dcVal = csrAt(CN::Domaincfg).read();
   Domaincfg dc{dcVal};
@@ -425,7 +426,7 @@ Domain::tryClearIp(unsigned id)
   if (id == 0 or id >= interruptCount_ or isDelegated(id))
     return false;
 
-  using CN = DomainCsrNumber;
+  using CN = CsrNumber;
 
   uint32_t dcVal = csrAt(CN::Domaincfg).read();
   Domaincfg dc{dcVal};
