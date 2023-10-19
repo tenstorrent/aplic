@@ -95,6 +95,10 @@ namespace TT_APLIC
       : value_(value)
     { }
 
+    /// Mask of writeable bits.
+    constexpr static CsrValue mask()
+    { return 0b0000'0000'0000'0000'0000'0001'1000'0101; }
+
     CsrValue value_;    // First variant of union
 
     struct   // Second variant
@@ -105,7 +109,7 @@ namespace TT_APLIC
       unsigned res1_  : 4;
       unsigned bit7_  : 1;
       unsigned ie_    : 1;  // Interrupt enable
-      unsigned res2_  : 16;
+      unsigned res2_  : 15;
       unsigned top8_  : 8;
     };
   };
@@ -118,6 +122,14 @@ namespace TT_APLIC
       : value_(value)
     { }
 
+    /// Mask of writeable bits when delegated (D == 1).
+    constexpr static CsrValue delegatedMask()
+    { return 0b111'1111'1111; }
+
+    /// Mask of writeable bits when not delegated (D == 0).
+    constexpr static CsrValue nonDelegatedMask()
+    { return 0b100'0000'0011; }
+
     CsrValue value_;  // First variant of union
 
     struct   // Second variant
@@ -125,6 +137,12 @@ namespace TT_APLIC
       unsigned child_ : 9;    // Child index (relative to parent)
       unsigned d_     : 1;    // Delegate
       unsigned res0_  : 22;
+    };
+
+    struct   // Third variant
+    {
+      unsigned sm_     : 2;
+      unsigned unused_ : 30;
     };
   };
 
@@ -136,9 +154,13 @@ namespace TT_APLIC
       : value_(value)
     { }
 
-    CsrValue value_;
+    /// Mask of writeable bits.
+    constexpr static CsrValue mask()
+    { return 0b1001'1111'0111'0111'1111'1111'1111'1111; }
 
-    struct
+    CsrValue value_; // First union variant.
+
+    struct           // Second variant.
     {
       unsigned ppn_  : 12;  // High part of ppn
       unsigned lhxw_ : 4;
@@ -160,9 +182,13 @@ namespace TT_APLIC
       : value_(value)
     { }
 
-    CsrValue value_;
+    /// Mask of writeable bits.
+    constexpr static CsrValue mask()
+    { return 0b0000'0000'0111'0000'0000'1111'1111'1111; }
 
-    struct
+    CsrValue value_;   // First union variant
+
+    struct             // Second variant
     {
       unsigned ppn_  : 12;  // High part of ppn
       unsigned res0_ : 8;
@@ -179,9 +205,13 @@ namespace TT_APLIC
       : value_(value)
     { }
 
-    CsrValue value_;
+    /// Mask of writeable bits.
+    constexpr static CsrValue mask()
+    { return 0b1111'1111'1111'1100'0001'0111'1111'1111; }
 
-    struct
+    CsrValue value_;   // First union variant
+
+    struct             // Second variant
     {
       unsigned eid_  : 11;  // External interrupt id
       unsigned res0_ : 1;
@@ -199,14 +229,27 @@ namespace TT_APLIC
       : value_(value)
     { }
 
-    CsrValue value_;
+    /// Mask of writeable bits.
+    constexpr static CsrValue mask()
+    { return 0b1111'1111'1111'1100'0000'0000'1111'1111; }
 
-    struct
+    CsrValue value_;   // First union variant
+
+    struct             // Second variant (non MSI delivery)
     {
       unsigned prio_ : 8;  // Priority
       unsigned res0_ : 10;
       unsigned hart_ : 14;
     };
+
+    struct             // Third variant (MSI delivery)
+    {
+      unsigned eeid_  : 11;
+      unsigned res1_  : 1;
+      unsigned guest_ : 6;
+      unsigned mhart_ : 14;
+    };
+
   };
 
 
@@ -263,9 +306,13 @@ namespace TT_APLIC
     unsigned offset() const
     { return unsigned(csrn_) * size(); }
 
-    /// Return the write maks of thie CSR.
+    /// Return the write mask of thie CSR.
     CsrValue mask() const
     { return mask_; }
+
+    /// Set the write mask of this CSR.
+    void setMask(CsrValue m)
+    { mask_ = m; }
 
   protected:
 
@@ -285,7 +332,8 @@ namespace TT_APLIC
   public:
 
     /// Aplic domain constants.
-    enum { IdcOffset = 0x4000, EndId = 1024, EndHart = 16384 };
+    enum { IdcOffset = 0x4000, EndId = 1024, EndHart = 16384, Align = 0xfff,
+	   MaxIpriolen = 8 };
 
     /// Default constructor.
     Domain()
@@ -293,7 +341,8 @@ namespace TT_APLIC
     { }
 
     /// Constructor. Interrupt count is one plus the largest supported interrupt
-    /// id and must be less than ore equal to EndId.
+    /// id and must be less than ore equal to EndId. Size is the number of bytes
+    /// occupied by this domain in the memory address spa.ce
     Domain(uint64_t addr, uint64_t size, unsigned hartCount,
 	   unsigned interruptCount, bool hasIdc)
       : addr_(addr), size_(size), hartCount_(hartCount),
@@ -301,15 +350,23 @@ namespace TT_APLIC
 	inverted_(32)
     {
       defineCsrs();
-      defineIdc();
+      if (hasIdc)
+	defineIdcs();
       assert(interruptCount <= EndId);
       assert(hartCount <= EndHart);
+      assert((addr % Align) == 0);  // Address must be a aligned.
+      assert((size % Align) == 0);  // Size must be amultiple of alignment.
+      if (hasIdc)
+	assert(size >= IdcOffset + hartCount * sizeof(Idc));
+      else
+	assert(size >= IdcOffset);
     }
 
     /// Read a memory mapped register associated with this Domain. Return true
     /// on success. Return false leaving value unmodified if addr is not in the
-    /// range of this Domain or if size/alignment is not valid.
-    bool read(uint64_t addr, unsigned size, uint64_t& value) const;
+    /// range of this Domain or if size/alignment is not valid. This method
+    /// cannot be const because a read from idc.claimi has a side effect.
+    bool read(uint64_t addr, unsigned size, uint64_t& value);
 
     /// Write a memory mapped register associated with this Domain. Return true
     /// on success. Return false if addr is not in the range of this Domain or if
@@ -385,6 +442,12 @@ namespace TT_APLIC
 
   protected:
 
+    /// Helper to read method. Read from the interrupt delivery control section.
+    bool readIdc(uint64_t addr, unsigned size, uint64_t& value);
+
+    /// Helper to write method. Write to the interrupt delivery control section.
+    bool writeIdc(uint64_t addr, unsigned size, uint64_t value);
+
     /// Set the interrupt pending bit of the given id. Return true if
     /// sucessful. Return false if it is not possible to set the bit (see
     /// secion 4.7 of the riscv-interrupt spec).
@@ -429,7 +492,7 @@ namespace TT_APLIC
     /// Define the interrupt deliver control structures (one per hart)
     /// associated with this domain. IDC is used only in direct (non-MSI)
     /// delivery mode.
-    void defineIdc();
+    void defineIdcs();
 
     /// Advance a csr number by the given amount (add amount to number).
     static CsrNumber advance(CsrNumber csrn, uint32_t amount)
@@ -445,6 +508,7 @@ namespace TT_APLIC
     uint64_t size_ = 0;
     unsigned hartCount_ = 0;
     unsigned interruptCount_ = 0;
+    unsigned ipriolen_ = MaxIpriolen;
     bool hasIdc_ = false;
     bool isMachine_ = true;   // Machine privilege.
 
@@ -454,6 +518,7 @@ namespace TT_APLIC
     std::shared_ptr<Domain> parent_;
     std::vector<CsrValue> active_;    // 32 items, parallel to setip0-setip31
     std::vector<CsrValue> inverted_;  // 32 items, parallel to setip0-setip31
+
 
     /// Callback to deliver an external interrupt to a hart.
     std::function<bool(unsigned hartIx, bool machine)> deliveryFunc_ = nullptr;

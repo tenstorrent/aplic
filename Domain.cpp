@@ -3,7 +3,7 @@
 using namespace TT_APLIC;
 
 bool
-Domain::read(uint64_t addr, unsigned size, uint64_t& value) const
+Domain::read(uint64_t addr, unsigned size, uint64_t& value)
 {
   value = 0;
 
@@ -23,42 +23,7 @@ Domain::read(uint64_t addr, unsigned size, uint64_t& value) const
       return true;
     }
 
-  if (not hasIdc_)
-    return false;
-
-  uint64_t idcIndex = (addr - (addr_ + IdcOffset)) / sizeof(Idc);
-  if (idcIndex < idcs_.size())
-    {
-      const Idc& idc = idcs_.at(idcIndex);
-      size_t idcItemCount = sizeof(idc) / sizeof(idc.idelivery_);
-      size_t idcItemIx = itemIx % idcItemCount;
-      switch (idcItemIx)
-	{
-	case 0  :
-	  value = idc.idelivery_;
-	  break;
-	case 1  :
-	  value = idc.iforce_;
-	  break;
-	case 2  :
-	  value = idc.ithreshold_;
-	  break;
-	case 3  :
-	  value = idc.topi_;
-	  if (value >= idc.ithreshold_)
-	    value = 0;
-	  break;
-	case 4  :
-	  value = idc.claimi_;
-	  break;
-	default :
-	  value = 0;
-	  break;
-	}
-      return true;
-    }
-
-  return false;
+  return readIdc(addr, size, value);
 }
 
 
@@ -99,7 +64,7 @@ Domain::write(uint64_t addr, unsigned size, uint64_t value)
       else if (itemIx == unsigned(CN::Setipnum))
 	{
 	  trySetIp(value);  // Value is the interrupt id.
-	  return true;
+	  return true;  // Setipnum CSR is not updated (read zero).
 	}
       if (itemIx >= unsigned(CN::Inclrip0) and itemIx <= unsigned(CN::Inclrip31))
 	{
@@ -135,28 +100,110 @@ Domain::write(uint64_t addr, unsigned size, uint64_t value)
       return true;
     }
 
+  return writeIdc(addr, size, value);
+}
+
+
+bool
+Domain::readIdc(uint64_t addr, unsigned size, uint64_t& value)
+{
+  value = 0;
+
   if (not hasIdc_)
     return false;
 
+  // Check size and alignment.
+  unsigned reqSize = sizeof(CsrValue);  // Required size.
+  if (size != reqSize or (addr & (reqSize - 1)) != 0)
+    return false;
+
   uint64_t idcIndex = (addr - (addr_ + IdcOffset)) / sizeof(Idc);
-  if (idcIndex < idcs_.size())
+  if (idcIndex >= idcs_.size())
+    return false;
+
+  Idc& idc = idcs_.at(idcIndex);
+  size_t idcItemCount = sizeof(idc) / sizeof(idc.idelivery_);
+  uint64_t itemIx = (addr - (addr_ + IdcOffset)) / reqSize;
+  size_t idcItemIx = itemIx % idcItemCount;
+  switch (idcItemIx)
     {
-      Idc& idc = idcs_.at(idcIndex);
-      size_t idcItemCount = sizeof(idc) / sizeof(idc.idelivery_);
-      size_t idcItemIx = itemIx % idcItemCount;
-      switch (idcItemIx)
-	{
-	case 0  : idc.idelivery_  = value; break;
-	case 1  : idc.iforce_     = value; break;
-	case 2  : idc.ithreshold_ = value; break;
-	case 3  : idc.topi_       = value; break;
-	case 4  : idc.claimi_     = value; break;
-	default :                          break;
-	}
-      return true;
+    case 0  :
+      value = idc.idelivery_;
+      break;
+
+    case 1  :
+      value = idc.iforce_;
+      break;
+
+    case 2  :
+      value = idc.ithreshold_;
+      break;
+
+    case 3  :
+      value = idc.topi_;
+      if (value >= idc.ithreshold_)
+	value = 0;
+      break;
+
+    case 4  :
+      value = idc.claimi_;
+      if (value == 0)
+	idc.iforce_ = 0;
+      else
+	tryClearIp(value);
+      break;
+
+    default :
+      break;
     }
 
-  return false;
+  return true;
+}
+
+
+bool
+Domain::writeIdc(uint64_t addr, unsigned size, uint64_t value)
+{
+  if (not hasIdc_)
+    return false;
+
+  // Check size and alignment.
+  unsigned reqSize = sizeof(CsrValue);  // Required size.
+  if (size != reqSize or (addr & (reqSize - 1)) != 0)
+    return false;
+
+  uint64_t idcIndex = (addr - (addr_ + IdcOffset)) / sizeof(Idc);
+  if (idcIndex >= idcs_.size())
+    return false;
+
+  Idc& idc = idcs_.at(idcIndex);
+  size_t idcItemCount = sizeof(idc) / sizeof(idc.idelivery_);
+  uint64_t itemIx = (addr - (addr_ + IdcOffset)) / reqSize;
+  size_t idcItemIx = itemIx % idcItemCount;
+  switch (idcItemIx)
+    {
+    case 0  :
+      idc.idelivery_  = value & 1;
+      break;
+
+    case 1  :
+      idc.iforce_ = value & 1;
+      break;
+
+    case 2  :
+      idc.ithreshold_ = value & ((1 << ipriolen_) - 1);
+      break;
+
+    case 3  :
+      break;  // topi is not writeable
+
+    case 4  :
+      break;  // claimi is not writeable
+
+    default :
+      break;
+    }
+  return true;
 }
 
 
@@ -169,68 +216,119 @@ Domain::defineCsrs()
 
   CsrValue allOnes = ~CsrValue(0);
 
-  csrAt(CN::Domaincfg) = DomainCsr("domaincfg", CN::Domaincfg, 0, allOnes);
+  CsrValue mask = Domaincfg::mask();
+  CsrValue reset = 0x80000000;
+  csrAt(CN::Domaincfg) = DomainCsr("domaincfg", CN::Domaincfg, reset, mask);
 
+  reset = 0;
   std::string base = "sourcecfg";
   for (unsigned ix = 1; ix <= 1023; ++ix)
     {
+      mask = ix < interruptCount_ ? Sourcecfg::nonDelegatedMask() : 0;
       std::string name = base + std::to_string(ix);
       CN cn{unsigned(CN::Sourcecfg1) + ix - 1};
-      csrAt(cn) = DomainCsr(name, cn, 0, allOnes);
+      csrAt(cn) = DomainCsr(name, cn, reset, mask);
     }
 
-  csrAt(CN::Mmsiaddrcfg) = DomainCsr("mmsiaddrcfg", CN::Mmsiaddrcfg, 0, allOnes);
-  csrAt(CN::Mmsiaddrcfgh) = DomainCsr("mmsiaddrcfgh", CN::Mmsiaddrcfgh, 0, allOnes);
-  csrAt(CN::Smsiaddrcfg) = DomainCsr("smsiaddrcfg", CN::Smsiaddrcfg, 0, allOnes);
-  csrAt(CN::Smsiaddrcfgh) = DomainCsr("smsiaddrcfgh", CN::Smsiaddrcfgh, 0, allOnes);
+  reset = 0;
+  csrAt(CN::Mmsiaddrcfg) = DomainCsr("mmsiaddrcfg", CN::Mmsiaddrcfg, reset, allOnes);
+  mask = Mmsiaddrcfgh::mask();
+  csrAt(CN::Mmsiaddrcfgh) = DomainCsr("mmsiaddrcfgh", CN::Mmsiaddrcfgh, reset, mask);
 
+  csrAt(CN::Smsiaddrcfg) = DomainCsr("smsiaddrcfg", CN::Smsiaddrcfg, reset, allOnes);
+  mask = Smsiaddrcfgh::mask();
+  csrAt(CN::Smsiaddrcfgh) = DomainCsr("smsiaddrcfgh", CN::Smsiaddrcfgh, reset, mask);
+
+  reset = 0;
   base = "setip";
   for (unsigned ix = 0; ix <= 31; ++ix)
     {
+      mask = ix == 0 ? ~CsrValue(1) : ~CsrValue(0);
       std::string name = base + std::to_string(ix);
       CN cn = advance(CN::Setip0, ix);
-      csrAt(cn) = DomainCsr(name, cn, 0, allOnes);
+      csrAt(cn) = DomainCsr(name, cn, reset, mask);
     }
-  csrAt(CN::Setipnum) = DomainCsr("setipnum", CN::Setipnum, 0, allOnes);
+  csrAt(CN::Setipnum) = DomainCsr("setipnum", CN::Setipnum, reset, allOnes);
 
   base = "in_clrip";
   for (unsigned ix = 0; ix <= 31; ++ix)
     {
+      mask = ix == 0 ? ~CsrValue(1) : ~CsrValue(0);
       std::string name = base + std::to_string(ix);
       CN cn = advance(CN::Inclrip0, + ix);
-      csrAt(cn) = DomainCsr(name, cn, 0, allOnes);
+      csrAt(cn) = DomainCsr(name, cn, reset, mask);
     }
-  csrAt(CN::Clripnum) = DomainCsr("clripnum", CN::Clripnum, 0, allOnes);
+  csrAt(CN::Clripnum) = DomainCsr("clripnum", CN::Clripnum, reset, allOnes);
 
   base = "setie";
   for (unsigned ix = 0; ix <= 31; ++ix)
     {
+      mask = ix == 0 ? ~CsrValue(1) : ~CsrValue(0);
       std::string name = base + std::to_string(ix);
       CN cn= advance(CN::Setie0, + ix);
-      csrAt(cn) = DomainCsr(name, cn, 0, allOnes);
+      csrAt(cn) = DomainCsr(name, cn, reset, mask);
     }
-  csrAt(CN::Setienum) = DomainCsr("setienum", CN::Setienum, 0, allOnes);
+  csrAt(CN::Setienum) = DomainCsr("setienum", CN::Setienum, reset, allOnes);
 
   base = "clrie";
   for (unsigned ix = 0; ix <= 31; ++ix)
     {
+      mask = ix == 0 ? ~CsrValue(1) : ~CsrValue(0);
       std::string name = base + std::to_string(ix);
       CN cn = advance(CN::Clrie0, + ix);
-      csrAt(cn) = DomainCsr(name, cn, 0, allOnes);
+      csrAt(cn) = DomainCsr(name, cn, reset, mask);
     }
   csrAt(CN::Clrienum) = DomainCsr("clrienum", CN::Clrienum, 0, allOnes);
 
-  csrAt(CN::Setipnumle) = DomainCsr("setipnum_le", CN::Setipnumle, 0, allOnes);
-  csrAt(CN::Setipnumbe) = DomainCsr("setipnum_be", CN::Setipnumbe, 0, allOnes);
-  csrAt(CN::Genmsi) = DomainCsr("genmsi", CN::Genmsi, 0, allOnes);
+  // Clear mask bits corresponding to non-implemented sources.
+  unsigned bitsPerItem = sizeof(CsrValue)*8;
+  unsigned missingIx = (interruptCount_) / bitsPerItem;
+  for (unsigned ix = missingIx; ix <= 31; ++ix)
+    {
+      mask = 0;
+      if (ix * bitsPerItem < interruptCount_)
+	{
+	  // Interrupt count is not a multiple of bitsPerItem. Clear
+	  // upper part of item.
+	  unsigned count = bitsPerItem - (interruptCount_ % bitsPerItem);
+	  mask = ((~mask) << count) >> count;
+	}
+
+      CN cn = advance(CN::Setip0, ix);
+      csrAt(cn).setMask(0);
+      cn = advance(CN::Inclrip0, ix);
+      csrAt(cn).setMask(0);
+      cn = advance(CN::Setie0, ix);
+      csrAt(cn).setMask(0);
+      cn = advance(CN::Clrie0, ix);
+      csrAt(cn).setMask(0);
+    }
+
+  reset = 0;
+  csrAt(CN::Setipnumle) = DomainCsr("setipnum_le", CN::Setipnumle, reset, allOnes);
+  csrAt(CN::Setipnumbe) = DomainCsr("setipnum_be", CN::Setipnumbe, reset, allOnes);
+
+  reset = 0;
+  mask = Genmsi::mask();
+  csrAt(CN::Genmsi) = DomainCsr("genmsi", CN::Genmsi, reset, mask);
   
+  mask = 0;
+  reset = 0;
   base = "target";
   for (unsigned ix = 1; ix <= 1023; ++ix)
     {
+      mask = ix < interruptCount_ ? Target::mask() : 0;
       std::string name = base + std::to_string(ix);
       CN cn = advance(CN::Target1, ix - 1);
-      csrAt(cn) = DomainCsr(name, cn, 0, allOnes);
+      csrAt(cn) = DomainCsr(name, cn, reset, mask);
     }
+}
+
+
+void
+Domain::defineIdcs()
+{
+  idcs_.resize(hartCount_);
 }
 
 
@@ -384,7 +482,8 @@ Domain::setInterruptPending(unsigned id, bool flag)
 	}
 
       idc.topi_ = topi.value_;  // Update IDC.
-      if (topi.prio_ < idc.ithreshold_ and deliveryFunc_)
+      if ((topi.prio_ < idc.ithreshold_ or idc.ithreshold_ == 0) and
+	  idc.idelivery_ and deliveryFunc_)
 	deliveryFunc_(hart, isMachinePrivilege());
     }
   else
