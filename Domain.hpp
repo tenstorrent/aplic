@@ -441,7 +441,24 @@ namespace TT_APLIC
     /// supervisor privilege domains. See section 4.9.1 of the riscv spec.
     uint64_t imsicAddress(unsigned hartIx);
 
+    /// Return true if this domain is in big-endian configuration.
+    bool bigEndian() const
+    { return domaincfg().be_; }
+
+    /// Return true if interrupts are enabled for this domain.
+    bool interruptEnabled() const
+    { return domaincfg().ie_; }
+
+    /// Return true if deilery mode is direct for this mode. Return false if
+    /// delivery mode is through MSI.
+    bool directDelivery() const
+    { return domaincfg().dm_; }
+
   protected:
+
+    /// Return the domaincfg CSR value.
+    Domaincfg domaincfg() const
+    { return csrs_.at(unsigned(CsrNumber::Domaincfg)).read(); }
 
     /// Return the pointer to the root domain.
     std::shared_ptr<Domain> rootDomain()
@@ -452,10 +469,10 @@ namespace TT_APLIC
     }
 
     /// Helper to read method. Read from the interrupt delivery control section.
-    bool readIdc(uint64_t addr, unsigned size, uint64_t& value);
+    bool readIdc(uint64_t addr, unsigned size, CsrValue& value);
 
     /// Helper to write method. Write to the interrupt delivery control section.
-    bool writeIdc(uint64_t addr, unsigned size, uint64_t value);
+    bool writeIdc(uint64_t addr, unsigned size, CsrValue value);
 
     /// Set the interrupt pending bit of the given id. Return true if
     /// sucessful. Return false if it is not possible to set the bit (see

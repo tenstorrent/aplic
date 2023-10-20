@@ -16,10 +16,13 @@ Domain::read(uint64_t addr, unsigned size, uint64_t& value)
   if (addr < addr_ or addr - addr_ >= size)
     return false;
 
+  CsrValue val = 0;
+  bool ok = true;
+
   uint64_t ix = (addr - addr_) / reqSize;
   if (ix < csrs_.size())
     {
-      value = csrs_.at(ix).read();
+      val = csrs_.at(ix).read();
 
       // Hide MSIADDRCFG if locked or not root domain
       using CN = CsrNumber;
@@ -29,12 +32,17 @@ Domain::read(uint64_t addr, unsigned size, uint64_t& value)
 	  assert(root);
 	  bool rootLocked = (root->csrAt(CN::Mmsiaddrcfgh).read() >> 31) & 1;
 	  if (rootLocked or not isRoot())
-	    value = ix == uint64_t(CN::Mmsiaddrcfgh) ? 0x80000000 : 0;
+	    val = ix == uint64_t(CN::Mmsiaddrcfgh) ? 0x80000000 : 0;
 	}
-      return true;
     }
+  else
+    ok = readIdc(addr, size, val);
 
-  return readIdc(addr, size, value);
+  if (bigEndian())
+    val = __builtin_bswap32(val);
+
+  value = val;
+  return ok;
 }
 
 
@@ -54,6 +62,10 @@ Domain::write(uint64_t addr, unsigned size, uint64_t value)
 
   unsigned bitsPerItem = reqSize*8;
 
+  CsrValue val = value;
+  if (bigEndian())
+    val = __builtin_bswap32(val);
+
   uint64_t itemIx = (addr - addr_) / reqSize;
   if (itemIx < csrs_.size())
     {
@@ -61,37 +73,49 @@ Domain::write(uint64_t addr, unsigned size, uint64_t value)
 	  itemIx <= unsigned(CN::Sourcecfg1023))
 	{
 	  if (isLeaf())
-	    value = 0;
+	    val = 0;
 	}
 
       if (itemIx >= unsigned(CN::Setip0) and itemIx <= unsigned(CN::Setip31))
 	{
 	  unsigned id0 = (itemIx - unsigned(CN::Setip0)) * bitsPerItem;
 	  for (unsigned bitIx = 0; bitIx < bitsPerItem; ++bitIx)
-	    if ((value >> bitIx) & 1)
+	    if ((val >> bitIx) & 1)
 	      trySetIp(id0 + bitIx);
 	  return true;
 	}
       else if (itemIx == unsigned(CN::Setipnum))
 	{
-	  trySetIp(value);  // Value is the interrupt id.
+	  trySetIp(val);  // Value is the interrupt id.
 	  return true;  // Setipnum CSR is not updated (read zero).
 	}
       if (itemIx >= unsigned(CN::Inclrip0) and itemIx <= unsigned(CN::Inclrip31))
 	{
 	  unsigned id0 = (itemIx - unsigned(CN::Inclrip0)) * bitsPerItem;
 	  for (unsigned bitIx = 0; bitIx < bitsPerItem; ++bitIx)
-	    if ((value >> bitIx) & 1)
+	    if ((val >> bitIx) & 1)
 	      tryClearIp(id0 + bitIx);
 	  return true;
 	}
       else if (itemIx == unsigned(CN::Clripnum))
 	{
-	  tryClearIp(value);  // Value is the interrupt id.
+	  tryClearIp(val);  // Value is the interrupt id.
+	  return true;
+	}
+      else if (itemIx == unsigned(CN::Setipnumle))
+	{
+	  trySetIp(value);
+	  return true;
+	}
+      else if (itemIx == unsigned(CN::Setipnumbe))
+	{
+	  val = value;
+	  val = __builtin_bswap32(val);
+	  trySetIp(value);
 	  return true;
 	}
 
-      csrs_.at(itemIx).write(value);
+      csrs_.at(itemIx).write(val);
 
       // Writing sourcecfg may change a source status. Cache status.
       if (itemIx >= unsigned(CN::Sourcecfg1) and
@@ -111,12 +135,12 @@ Domain::write(uint64_t addr, unsigned size, uint64_t value)
       return true;
     }
 
-  return writeIdc(addr, size, value);
+  return writeIdc(addr, size, val);
 }
 
 
 bool
-Domain::readIdc(uint64_t addr, unsigned size, uint64_t& value)
+Domain::readIdc(uint64_t addr, unsigned size, CsrValue& value)
 {
   value = 0;
 
@@ -136,6 +160,7 @@ Domain::readIdc(uint64_t addr, unsigned size, uint64_t& value)
   size_t idcItemCount = sizeof(idc) / sizeof(idc.idelivery_);
   uint64_t itemIx = (addr - (addr_ + IdcOffset)) / reqSize;
   size_t idcItemIx = itemIx % idcItemCount;
+
   switch (idcItemIx)
     {
     case 0  :
@@ -173,7 +198,7 @@ Domain::readIdc(uint64_t addr, unsigned size, uint64_t& value)
 
 
 bool
-Domain::writeIdc(uint64_t addr, unsigned size, uint64_t value)
+Domain::writeIdc(uint64_t addr, unsigned size, CsrValue value)
 {
   if (not hasIdc_)
     return false;
