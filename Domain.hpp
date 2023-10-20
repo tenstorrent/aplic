@@ -317,7 +317,6 @@ namespace TT_APLIC
 
     /// Default constructor.
     Domain()
-      : active_(32), inverted_(32)
     { }
 
     /// Constructor. Interrupt count is one plus the largest supported interrupt
@@ -326,8 +325,7 @@ namespace TT_APLIC
     Domain(uint64_t addr, uint64_t size, unsigned hartCount,
 	   unsigned interruptCount, bool hasIdc)
       : addr_(addr), size_(size), hartCount_(hartCount),
-	interruptCount_(interruptCount), hasIdc_(hasIdc), active_(32),
-	inverted_(32)
+	interruptCount_(interruptCount), hasIdc_(hasIdc)
     {
       defineCsrs();
       if (hasIdc)
@@ -500,6 +498,10 @@ namespace TT_APLIC
     /// delivery mode.
     void defineIdcs();
 
+    /// Called after a CSR write to update masks and bits depending on sourcecfg
+    /// if sourcecfg is written. Number of written CSR is passed in csrn.
+    void postSourcecfgWrite(unsigned csrn);
+
     /// Advance a csr number by the given amount (add amount to number).
     static CsrNumber advance(CsrNumber csrn, uint32_t amount)
     { return CsrNumber(CsrValue(csrn) + amount); }
@@ -522,9 +524,6 @@ namespace TT_APLIC
     std::vector<Idc> idcs_;
     std::vector<std::shared_ptr<Domain>> children_;
     std::shared_ptr<Domain> parent_;
-    std::vector<CsrValue> active_;    // 32 items, parallel to setip0-setip31
-    std::vector<CsrValue> inverted_;  // 32 items, parallel to setip0-setip31
-
 
     /// Callback to deliver an external interrupt to a hart.
     std::function<bool(unsigned hartIx, bool machine)> deliveryFunc_ = nullptr;

@@ -117,20 +117,9 @@ Domain::write(uint64_t addr, unsigned size, uint64_t value)
 
       csrs_.at(itemIx).write(val);
 
-      // Writing sourcecfg may change a source status. Cache status.
-      if (itemIx >= unsigned(CN::Sourcecfg1) and
-	  itemIx <= unsigned(CN::Sourcecfg1023))
-	{
-	  unsigned id = itemIx - unsigned(CN::Sourcecfg1) + 1;
-	  unsigned ix = id / bitsPerItem;
-	  unsigned bitIx = id % bitsPerItem;
-	  bool flag = isActive(id);
-	  CsrValue mask = CsrValue(1) << bitIx;
-	  active_.at(ix) = flag ? active_.at(ix) | mask : active_.at(ix) & ~mask;
-	  inverted_.at(ix) = isInverted(id);
-	  if (flag)
-	    assert(0 && "Evalute source for interrupt delivery");
-	}
+      // Writing sourcecfg may change a source status. Update enable and pending
+      // bits.
+      postSourcecfgWrite(itemIx);
 
       return true;
     }
@@ -248,6 +237,45 @@ Domain::writeIdc(uint64_t addr, unsigned size, CsrValue value)
       break;
     }
   return true;
+}
+
+
+void
+Domain::postSourcecfgWrite(unsigned csrn)
+{
+  using CN = CsrNumber;
+
+  if (csrn < unsigned(CN::Sourcecfg1) or csrn > unsigned(CN::Sourcecfg1023))
+    return;
+
+  unsigned bitsPerItem = sizeof(CsrValue)*8;
+  unsigned id = csrn - unsigned(CN::Sourcecfg1) + 1;
+  unsigned ix = id / bitsPerItem;
+  unsigned bitIx = id % bitsPerItem;
+  bool flag = isActive(id);
+
+  // Make ip bit readable or read-only-zero.
+  CsrValue bitMask = CsrValue(1) << bitIx;
+  unsigned ipNum = ix + unsigned(CN::Setip0);
+  CsrValue ipMask = csrs_.at(ipNum).mask();
+  ipMask = flag ? ipMask | bitMask : ipMask & ~bitMask;
+  csrs_.at(ipNum).setMask(ipMask);
+
+  // Make ie bit readable or read-only-zero.
+  unsigned ieNum = ix + unsigned(CN::Setie0);
+  CsrValue ieMask = csrs_.at(ieNum).mask();
+  ieMask = flag ? ieMask | bitMask : ieMask & ~bitMask;
+  csrs_.at(ieNum).setMask(ieMask);
+
+  if (not flag)
+    {
+      // Clear interrupt enabled/pending bits if id is not active.
+      csrs_.at(ipNum).write(csrs_.at(ipNum).read() & ~bitMask);
+      csrs_.at(ieNum).write(csrs_.at(ieNum).read() & ~bitMask);
+    }
+
+  if (flag)
+    assert(0 && "Evalute source for interrupt delivery");
 }
 
 
