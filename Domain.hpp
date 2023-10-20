@@ -84,7 +84,7 @@ namespace TT_APLIC
       unsigned res0_ : 8;
       unsigned id_   : 10;
       unsigned res1_ : 6;
-    };
+    } bits_;
   };
 
 
@@ -111,7 +111,7 @@ namespace TT_APLIC
       unsigned ie_    : 1;  // Interrupt enable
       unsigned res2_  : 15;
       unsigned top8_  : 8;
-    };
+    } bits_;
   };
 
 
@@ -137,13 +137,13 @@ namespace TT_APLIC
       unsigned child_ : 9;    // Child index (relative to parent)
       unsigned d_     : 1;    // Delegate
       unsigned res0_  : 22;
-    };
+    } bits_;
 
     struct   // Third variant
     {
-      unsigned sm_     : 2;
+      unsigned sm_     : 2;  // Source mode
       unsigned unused_ : 30;
-    };
+    } bits2_;
   };
 
 
@@ -171,7 +171,7 @@ namespace TT_APLIC
       unsigned hhxs_ : 5;
       unsigned res2_ : 2;
       unsigned l_    : 1;
-    };
+    } bits_;
   };
 
 
@@ -194,7 +194,7 @@ namespace TT_APLIC
       unsigned res0_ : 8;
       unsigned lhxs_ : 3;
       unsigned res1_ : 9;
-    };
+    } bits_;
   };
 
 
@@ -218,7 +218,7 @@ namespace TT_APLIC
       unsigned busy_ : 1;
       unsigned res1_ : 5;
       unsigned hart_ : 14;
-    };
+    } bits_;
   };
 
 
@@ -240,7 +240,7 @@ namespace TT_APLIC
       unsigned prio_ : 8;  // Priority
       unsigned res0_ : 10;
       unsigned hart_ : 14;
-    };
+    } bits_;
 
     struct             // Third variant (MSI delivery)
     {
@@ -248,27 +248,7 @@ namespace TT_APLIC
       unsigned res1_  : 1;
       unsigned guest_ : 6;
       unsigned mhart_ : 14;
-    };
-
-  };
-
-
-  /// Union to pack/unpack the Topi register in an IDC structure.
-  union Topi
-  {
-    Topi(CsrValue value)
-      : value_(value)
-    { }
-
-    CsrValue value_;
-
-    struct
-    {
-      unsigned prio_ : 8;  // Priority
-      unsigned res0_ : 8;
-      unsigned hart_ : 10;
-      unsigned res1_ : 6;
-    };
+    } mbits_;
   };
 
 
@@ -443,16 +423,16 @@ namespace TT_APLIC
 
     /// Return true if this domain is in big-endian configuration.
     bool bigEndian() const
-    { return domaincfg().be_; }
+    { return domaincfg().bits_.be_; }
 
     /// Return true if interrupts are enabled for this domain.
     bool interruptEnabled() const
-    { return domaincfg().ie_; }
+    { return domaincfg().bits_.ie_; }
 
     /// Return true if deilery mode is direct for this mode. Return false if
     /// delivery mode is through MSI.
     bool directDelivery() const
-    { return domaincfg().dm_; }
+    { return domaincfg().bits_.dm_; }
 
   protected:
 

@@ -228,8 +228,8 @@ Domain::writeIdc(uint64_t addr, unsigned size, CsrValue value)
 	Domaincfg dcfg{dcfgVal};
 
 	idc.iforce_ = value & 1;
-	if (idc.iforce_ and idc.topi_ == 0 and idc.idelivery_ and dcfg.ie_ and
-	    deliveryFunc_)
+	if (idc.iforce_ and idc.topi_ == 0 and idc.idelivery_ and
+	    interruptEnabled() and deliveryFunc_)
 	  deliveryFunc_(idcIndex, isMachinePrivilege());
       }
       break;
@@ -414,7 +414,7 @@ Domain::isDelegated(unsigned id) const
   // Check if source is delegated.
   auto configVal = csrs_.at(unsigned(cn)).read();
   Sourcecfg sc{configVal};
-  if (sc.d_)
+  if (sc.bits_.d_)
     return true;
   return false;
 }
@@ -432,9 +432,9 @@ Domain::isDelegated(unsigned id, unsigned& childIx) const
   // Check if source is delegated.
   auto configVal = csrs_.at(unsigned(cn)).read();
   Sourcecfg sc{configVal};
-  if (sc.d_)
+  if (sc.bits_.d_)
     {
-      childIx = sc.child_;
+      childIx = sc.bits_.child_;
       return true;
     }
   return false;
@@ -453,11 +453,11 @@ Domain::sourceMode(unsigned id) const
   // Check if source is delegated.
   auto configVal = csrs_.at(unsigned(cn)).read();
   Sourcecfg sc{configVal};
-  if (sc.d_)
+  if (sc.bits_.d_)
     return SourceMode::Inactive;
 
   /// Least significant 3 bits encode the source mode.
-  return SourceMode{configVal & 7};
+  return SourceMode{sc.bits2_.sm_};
 }
 
 
@@ -490,8 +490,8 @@ Domain::setInterruptPending(unsigned id, bool flag)
   CN ntc = advance(CN::Target1, id - 1);  // Number of target CSR.
   auto targetVal = csrAt(ntc).read();
   Target target{targetVal};
-  unsigned prio =  target.prio_;
-  unsigned hart = target.hart_;
+  unsigned prio =  target.bits_.prio_;
+  unsigned hart = target.bits_.hart_;
 
   if (hasIdc_)
     {
@@ -499,31 +499,31 @@ Domain::setInterruptPending(unsigned id, bool flag)
       // For tie, lower source id wins
       auto& idc = idcs_.at(hart);
       IdcTopi topi{idc.topi_};
-      unsigned topPrio = topi.prio_;
+      unsigned topPrio = topi.bits_.prio_;
       if (flag and enabled)
 	{
-	  if (prio <= topPrio or (prio == topPrio and id < topi.id_))
+	  if (prio <= topPrio or (prio == topPrio and id < topi.bits_.id_))
 	    {
-	      topi.prio_ = prio;
-	      topi.id_ = id;
+	      topi.bits_.prio_ = prio;
+	      topi.bits_.id_ = id;
 	    }
 	}
-      else if (id == topi.id_ and not flag)
+      else if (id == topi.bits_.id_ and not flag)
 	{
 	  // Interrupt that used to determine our top id went away. Re-compute
 	  // top id and priority in interrupt delivery control.
-	  topi.prio_ = 0;
-	  topi.id_ = 0;
+	  topi.bits_.prio_ = 0;
+	  topi.bits_.id_ = 0;
 	  for (unsigned iid = 1; iid < interruptCount_; ++iid)
 	    {
 	      CN ntc = advance(CN::Target1, iid - 1);
 	      CsrValue targetVal = csrAt(ntc).read();
 	      Target target{targetVal};
-	      if (target.hart_ == hart)
-		if (topi.prio_ == 0 or target.prio_ < topi.prio_)
+	      if (target.bits_.hart_ == hart)
+		if (topi.bits_.prio_ == 0 or target.bits_.prio_ < topi.bits_.prio_)
 		  {
-		    topi.prio_ = target.prio_;
-		    topi.id_ = iid;
+		    topi.bits_.prio_ = target.bits_.prio_;
+		    topi.bits_.id_ = iid;
 		  }
 	    }
 	}
@@ -532,8 +532,8 @@ Domain::setInterruptPending(unsigned id, bool flag)
 
       CsrValue dcfgVal = csrAt(CN::Domaincfg).read();
       Domaincfg dcfg{dcfgVal};
-      if ((topi.prio_ < idc.ithreshold_ or idc.ithreshold_ == 0) and
-	  idc.idelivery_ and dcfg.ie_ and deliveryFunc_)
+      if ((topi.bits_.prio_ < idc.ithreshold_ or idc.ithreshold_ == 0) and
+	  idc.idelivery_ and interruptEnabled() and deliveryFunc_)
 	deliveryFunc_(hart, isMachinePrivilege());
     }
   else
@@ -552,18 +552,10 @@ Domain::trySetIp(unsigned id)
   if (id == 0 or id >= interruptCount_ or isDelegated(id))
     return false;
 
-  using CN = CsrNumber;
-
-  CsrValue dcVal = csrAt(CN::Domaincfg).read();
-  Domaincfg dc{dcVal};
-
   SourceMode mode = sourceMode(id);
-
   if (mode == SourceMode::Level0 or mode == SourceMode::Level1)
-    {
-      if (not dc.dm_)
-	return false;  // Cannot set by a write in direct delivery mode
-    }
+    if (directDelivery())
+      return false;  // Cannot set by a write in direct delivery mode
 
   return setInterruptPending(id, true);
 }
@@ -575,18 +567,10 @@ Domain::tryClearIp(unsigned id)
   if (id == 0 or id >= interruptCount_ or isDelegated(id))
     return false;
 
-  using CN = CsrNumber;
-
-  CsrValue dcVal = csrAt(CN::Domaincfg).read();
-  Domaincfg dc{dcVal};
-
   SourceMode mode = sourceMode(id);
-
   if (mode == SourceMode::Level0 or mode == SourceMode::Level1)
-    {
-      if (not dc.dm_)
-	return false;  // Cannot clear by a write in direct delivery mode
-    }
+    if (directDelivery())
+      return false;  // Cannot clear by a write in direct delivery mode
 
   return setInterruptPending(id, false);
 }
@@ -606,24 +590,24 @@ Domain::imsicAddress(unsigned hartIx)
 
   if (isMachinePrivilege())
     {
-      g = (hartIx >> cfgh.lhxw_) & ((1 << cfgh.hhxw_) - 1);
-      h = hartIx & ((1 << cfgh.lhxw_) - 1);
+      g = (hartIx >> cfgh.bits_.lhxw_) & ((1 << cfgh.bits_.hhxw_) - 1);
+      h = hartIx & ((1 << cfgh.bits_.lhxw_) - 1);
       uint64_t low = root->csrAt(CN::Mmsiaddrcfg).read();
-      addr = (uint64_t(cfgh.ppn_) << itemBits) | low;
-      addr = (addr | (g << (cfgh.hhxs_ + 12)) | (h << cfgh.lhxs_)) << 12;
+      addr = (uint64_t(cfgh.bits_.ppn_) << itemBits) | low;
+      addr = (addr | (g << (cfgh.bits_.hhxs_ + 12)) | (h << cfgh.bits_.lhxs_)) << 12;
     }
   else
     {
       CN ntc = advance(CN::Target1, hartIx - 1);
       Target target{root->csrAt(ntc).read()};
-      guest = target.guest_;
+      guest = target.mbits_.guest_;
 
       Smsiaddrcfgh scfgh{root->csrAt(CN::Smsiaddrcfgh).read()};
-      g = (hartIx >> cfgh.lhxw_) & ((1 << cfgh.hhxw_) - 1);
-      h = hartIx & ((1 << cfgh.lhxw_) - 1);
+      g = (hartIx >> cfgh.bits_.lhxw_) & ((1 << cfgh.bits_.hhxw_) - 1);
+      h = hartIx & ((1 << cfgh.bits_.lhxw_) - 1);
       uint64_t low = root->csrAt(CN::Smsiaddrcfg).read();
-      addr = (uint64_t(scfgh.ppn_) << itemBits) | low;
-      addr = (addr | (g << (cfgh.hhxs_ + 12)) | (h << scfgh.lhxs_) | guest) << 12;
+      addr = (uint64_t(scfgh.bits_.ppn_) << itemBits) | low;
+      addr = (addr | (g << (cfgh.bits_.hhxs_ + 12)) | (h << scfgh.bits_.lhxs_) | guest) << 12;
     }
 
   return addr;
