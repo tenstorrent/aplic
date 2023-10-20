@@ -16,10 +16,21 @@ Domain::read(uint64_t addr, unsigned size, uint64_t& value)
   if (addr < addr_ or addr - addr_ >= size)
     return false;
 
-  uint64_t itemIx = (addr - addr_) / reqSize;
-  if (itemIx < csrs_.size())
+  uint64_t ix = (addr - addr_) / reqSize;
+  if (ix < csrs_.size())
     {
-      value = csrs_.at(itemIx).read();
+      value = csrs_.at(ix).read();
+
+      // Hide MSIADDRCFG if locked or not root domain
+      using CN = CsrNumber;
+      if (ix >= uint64_t(CN::Mmsiaddrcfg) and ix <= uint64_t(CN::Smsiaddrcfgh))
+	{
+	  auto root = rootDomain();
+	  assert(root);
+	  bool rootLocked = (root->csrAt(CN::Mmsiaddrcfgh).read() >> 31) & 1;
+	  if (rootLocked or not isRoot())
+	    value = ix == uint64_t(CN::Mmsiaddrcfgh) ? 0x80000000 : 0;
+	}
       return true;
     }
 
@@ -437,7 +448,7 @@ Domain::setInterruptPending(unsigned id, bool flag)
   unsigned bitsPerItem = sizeof(CsrValue) * 8;
   unsigned bitIx = id % bitsPerItem;
   CsrValue mask = CsrValue(1) << bitIx;
-  uint32_t value = csrAt(cn).read();
+  CsrValue value = csrAt(cn).read();
   bool prev = value & mask;
   if (prev == flag)
     return true;  // Value did not change.
@@ -481,7 +492,7 @@ Domain::setInterruptPending(unsigned id, bool flag)
 	  for (unsigned iid = 1; iid < interruptCount_; ++iid)
 	    {
 	      CN ntc = advance(CN::Target1, iid - 1);
-	      uint32_t targetVal = csrAt(ntc).read();
+	      CsrValue targetVal = csrAt(ntc).read();
 	      Target target{targetVal};
 	      if (target.hart_ == hart)
 		if (topi.prio_ == 0 or target.prio_ < topi.prio_)
@@ -553,4 +564,42 @@ Domain::tryClearIp(unsigned id)
     }
 
   return setInterruptPending(id, false);
+}
+
+
+uint64_t
+Domain::imsicAddress(unsigned hartIx)
+{
+  using CN = CsrNumber;
+
+  unsigned itemBits = sizeof(CsrValue) * 8;
+
+  uint64_t addr = 0, g = 0, h = 0, guest = 0;
+
+  auto root = rootDomain();
+  Mmsiaddrcfgh cfgh{root->csrAt(CN::Mmsiaddrcfgh).read()};
+
+  if (isMachinePrivilege())
+    {
+      g = (hartIx >> cfgh.lhxw_) & ((1 << cfgh.hhxw_) - 1);
+      h = hartIx & ((1 << cfgh.lhxw_) - 1);
+      uint64_t low = root->csrAt(CN::Mmsiaddrcfg).read();
+      addr = (uint64_t(cfgh.ppn_) << itemBits) | low;
+      addr = (addr | (g << (cfgh.hhxs_ + 12)) | (h << cfgh.lhxs_)) << 12;
+    }
+  else
+    {
+      CN ntc = advance(CN::Target1, hartIx - 1);
+      Target target{root->csrAt(ntc).read()};
+      guest = target.guest_;
+
+      Smsiaddrcfgh scfgh{root->csrAt(CN::Smsiaddrcfgh).read()};
+      g = (hartIx >> cfgh.lhxw_) & ((1 << cfgh.hhxw_) - 1);
+      h = hartIx & ((1 << cfgh.lhxw_) - 1);
+      uint64_t low = root->csrAt(CN::Smsiaddrcfg).read();
+      addr = (uint64_t(scfgh.ppn_) << itemBits) | low;
+      addr = (addr | (g << (cfgh.hhxs_ + 12)) | (h << scfgh.lhxs_) | guest) << 12;
+    }
+
+  return addr;
 }

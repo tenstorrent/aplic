@@ -56,7 +56,7 @@ namespace TT_APLIC
     };
 
 
-  /// APLIC Inerrupt Delivery Control (IDC).  One per hart. Used
+  /// APLIC Interrupt Delivery Control (IDC).  One per hart. Used
   /// for direct delivery (non message signaled).
   struct Idc
   {
@@ -88,7 +88,7 @@ namespace TT_APLIC
   };
 
 
-  /// Union to pack/unpack the domaincfg CSR.
+  /// Union to pack/unpack the Domaincfg CSR.
   union Domaincfg
   {
     Domaincfg(CsrValue value)
@@ -115,7 +115,7 @@ namespace TT_APLIC
   };
 
 
-  /// Union to pack/unpack the sourcecfg CSRs
+  /// Union to pack/unpack the Sourcecfg CSRs
   union Sourcecfg
   {
     Sourcecfg(CsrValue value)
@@ -147,7 +147,7 @@ namespace TT_APLIC
   };
 
 
-  /// Union to pack/unpack the mmsiaddrcfgh CSRs
+  /// Union to pack/unpack the Mmsiaddrcfgh CSR
   union Mmsiaddrcfgh
   {
     Mmsiaddrcfgh(CsrValue value)
@@ -175,7 +175,7 @@ namespace TT_APLIC
   };
 
 
-  /// Union to pack/unpack the smsiaddrcfgh CSRs
+  /// Union to pack/unpack the Smsiaddrcfgh CSR
   union Smsiaddrcfgh
   {
     Smsiaddrcfgh(CsrValue value)
@@ -222,7 +222,7 @@ namespace TT_APLIC
   };
 
 
-  /// Union to pack/unpack the target CSRs
+  /// Union to pack/unpack the Target CSRs
   union Target
   {
     Target(CsrValue value)
@@ -253,7 +253,7 @@ namespace TT_APLIC
   };
 
 
-  /// Union to pack/unpack the topi register in an IDC structure.
+  /// Union to pack/unpack the Topi register in an IDC structure.
   union Topi
   {
     Topi(CsrValue value)
@@ -272,7 +272,7 @@ namespace TT_APLIC
   };
 
 
-  /// Aplic domain constrol and status register.
+  /// Aplic domain control and status register.
   class DomainCsr
   {
   public:
@@ -306,7 +306,7 @@ namespace TT_APLIC
     unsigned offset() const
     { return unsigned(csrn_) * size(); }
 
-    /// Return the write mask of thie CSR.
+    /// Return the write mask of this CSR.
     CsrValue mask() const
     { return mask_; }
 
@@ -342,7 +342,7 @@ namespace TT_APLIC
 
     /// Constructor. Interrupt count is one plus the largest supported interrupt
     /// id and must be less than ore equal to EndId. Size is the number of bytes
-    /// occupied by this domain in the memory address spa.ce
+    /// occupied by this domain in the memory address space.
     Domain(uint64_t addr, uint64_t size, unsigned hartCount,
 	   unsigned interruptCount, bool hasIdc)
       : addr_(addr), size_(size), hartCount_(hartCount),
@@ -355,7 +355,7 @@ namespace TT_APLIC
       assert(interruptCount <= EndId);
       assert(hartCount <= EndHart);
       assert((addr % Align) == 0);  // Address must be a aligned.
-      assert((size % Align) == 0);  // Size must be amultiple of alignment.
+      assert((size % Align) == 0);  // Size must be a multiple of alignment.
       if (hasIdc)
 	assert(size >= IdcOffset + hartCount * sizeof(Idc));
       else
@@ -372,10 +372,6 @@ namespace TT_APLIC
     /// on success. Return false if addr is not in the range of this Domain or if
     /// size/alignment is not valid.
     bool write(uint64_t addr, unsigned size, uint64_t value);
-
-    /// Initiate an inerrupt with the given interrupt id. Return true on success
-    /// return false if id is out of bounds.
-    bool initiateInterrupt(unsigned id);
 
     /// Set the given domain as a child of this domain.
     void addChild(std::shared_ptr<Domain> child)
@@ -434,13 +430,26 @@ namespace TT_APLIC
     }
 
     /// Define a callback function for the domain to deliver an interrupt to a
-    /// hart. When an interupt becomes active (ready for delivery), the domain
+    /// hart. When an interrupt becomes active (ready for delivery), the domain
     /// will call this function which will presumably set the M/S external
     /// interrupt pending bit in the MIP CSR of that hart.
     void setDeliverMethod(std::function<bool(unsigned hartIx, bool machine)> func)
     { deliveryFunc_ = func; }
 
+    /// Return the IMSIC address for the given hart. This is computed from the
+    /// MMSIADDRCFG CSRs for machine privilegeand from the SMSIADDRCFG CSRS for
+    /// supervisor privilege domains. See section 4.9.1 of the riscv spec.
+    uint64_t imsicAddress(unsigned hartIx);
+
   protected:
+
+    /// Return the pointer to the root domain.
+    std::shared_ptr<Domain> rootDomain()
+    {
+      if (isRoot())
+	return std::shared_ptr<Domain>(this);
+      return getParent()->rootDomain();
+    }
 
     /// Helper to read method. Read from the interrupt delivery control section.
     bool readIdc(uint64_t addr, unsigned size, uint64_t& value);
@@ -458,8 +467,8 @@ namespace TT_APLIC
     /// secion 4.7 of the riscv-interrupt spec).
     bool tryClearIp(unsigned id);
 
-    /// Set the interrupt pending bit corresonding to the given interrupt id to
-    /// flag. Return true on sucess and false if id is out of bounds. This has
+    /// Set the interrupt pending bit corresponding to the given interrupt id to
+    /// flag. Return true on success and false if id is out of bounds. This has
     /// no effect if the interrupt id is not active in this domain. The top id
     /// for the target host will be updated as a side effect.
     bool setInterruptPending(unsigned id, bool flag);
