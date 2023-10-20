@@ -412,11 +412,8 @@ Domain::isDelegated(unsigned id) const
   CN cn = advance(CN::Sourcecfg1, id - 1);
 
   // Check if source is delegated.
-  auto configVal = csrs_.at(unsigned(cn)).read();
-  Sourcecfg sc{configVal};
-  if (sc.bits_.d_)
-    return true;
-  return false;
+  Sourcecfg sc{csrs_.at(unsigned(cn)).read()};
+  return sc.bits_.d_;
 }
 
 
@@ -429,34 +426,23 @@ Domain::isDelegated(unsigned id, unsigned& childIx) const
   using CN = CsrNumber;
   CN cn = advance(CN::Sourcecfg1, id - 1);
 
-  // Check if source is delegated.
-  auto configVal = csrs_.at(unsigned(cn)).read();
-  Sourcecfg sc{configVal};
+  Sourcecfg sc{csrs_.at(unsigned(cn)).read()};
   if (sc.bits_.d_)
-    {
-      childIx = sc.bits_.child_;
-      return true;
-    }
-  return false;
+    childIx = sc.bits_.child_;
+  return sc.bits_.d_;
 }
 
 
 SourceMode
 Domain::sourceMode(unsigned id) const
 {
-  if (id >= interruptCount_ or id == 0)
+  if (not isActive(id))
     return SourceMode::Inactive;
 
   using CN = CsrNumber;
+
   CN cn = advance(CN::Sourcecfg1, id - 1);
-
-  // Check if source is delegated.
-  auto configVal = csrs_.at(unsigned(cn)).read();
-  Sourcecfg sc{configVal};
-  if (sc.bits_.d_)
-    return SourceMode::Inactive;
-
-  /// Least significant 3 bits encode the source mode.
+  Sourcecfg sc{csrs_.at(unsigned(cn)).read()};
   return SourceMode{sc.bits2_.sm_};
 }
 
