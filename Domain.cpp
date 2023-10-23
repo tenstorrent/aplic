@@ -57,7 +57,7 @@ Domain::write(uint64_t addr, unsigned size, uint64_t value)
   if (size != reqSize or (addr & (reqSize - 1)) != 0)
     return false;
 
-  if (addr < addr_ or addr - addr_ >= size)
+  if (addr < addr_ or addr - addr_ >= size_)
     return false;
 
   unsigned bitsPerItem = reqSize*8;
@@ -133,7 +133,7 @@ Domain::readIdc(uint64_t addr, unsigned size, CsrValue& value)
 {
   value = 0;
 
-  if (not hasIdc_)
+  if (not directDelivery())
     return false;
 
   // Check size and alignment.
@@ -189,7 +189,7 @@ Domain::readIdc(uint64_t addr, unsigned size, CsrValue& value)
 bool
 Domain::writeIdc(uint64_t addr, unsigned size, CsrValue value)
 {
-  if (not hasIdc_)
+  if (not directDelivery())
     return false;
 
   // Check size and alignment.
@@ -267,6 +267,10 @@ Domain::postSourcecfgWrite(unsigned csrn)
   ieMask = flag ? ieMask | bitMask : ieMask & ~bitMask;
   csrs_.at(ieNum).setMask(ieMask);
 
+  // Check delegation.
+  CsrValue cfgMask = isDelegated(id) ? Sourcecfg::delegatedMask() : Sourcecfg::nonDelegatedMask();
+  csrs_.at(csrn).setMask(cfgMask);
+
   if (not flag)
     {
       // Clear interrupt enabled/pending bits if id is not active.
@@ -275,7 +279,7 @@ Domain::postSourcecfgWrite(unsigned csrn)
     }
 
   if (flag)
-    assert(0 && "Evalute source for interrupt delivery");
+    assert(0 && "Evaluate source for interrupt delivery");
 }
 
 
@@ -296,7 +300,10 @@ Domain::defineCsrs()
   std::string base = "sourcecfg";
   for (unsigned ix = 1; ix <= 1023; ++ix)
     {
-      mask = ix < interruptCount_ ? Sourcecfg::nonDelegatedMask() : 0;
+      if (ix >= interruptCount_)
+	mask = 0;
+      else
+	mask = isRoot() ? Sourcecfg::nonDelegatedMask() : 0;
       std::string name = base + std::to_string(ix);
       CN cn{unsigned(CN::Sourcecfg1) + ix - 1};
       csrAt(cn) = DomainCsr(name, cn, reset, mask);
@@ -405,7 +412,8 @@ Domain::defineIdcs()
 
 
 bool
-Domain::setSourceState(unsigned id, bool state)
+Domain::
+setSourceState(unsigned id, bool state)
 {
   if (id >= interruptCount_ or id == 0)
     return false;
@@ -464,7 +472,7 @@ Domain::isDelegated(unsigned id, unsigned& childIx) const
 SourceMode
 Domain::sourceMode(unsigned id) const
 {
-  if (not isActive(id))
+  if (id == 0 or id >= interruptCount_ or isDelegated(id))
     return SourceMode::Inactive;
 
   using CN = CsrNumber;
@@ -507,7 +515,7 @@ Domain::setInterruptPending(unsigned id, bool flag)
   unsigned prio =  target.bits_.prio_;
   unsigned hart = target.bits_.hart_;
 
-  if (hasIdc_)
+  if (directDelivery())
     {
       // Update top priority interrupt. Lower priority number wins.
       // For tie, lower source id wins

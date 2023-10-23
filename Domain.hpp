@@ -128,21 +128,21 @@ namespace TT_APLIC
 
     /// Mask of writeable bits when not delegated (D == 0).
     constexpr static CsrValue nonDelegatedMask()
-    { return 0b100'0000'0011; }
+    { return 0b100'0000'0111; }
 
     CsrValue value_;  // First variant of union
 
     struct   // Second variant
     {
-      unsigned child_ : 9;    // Child index (relative to parent)
+      unsigned child_ : 10;    // Child index (relative to parent)
       unsigned d_     : 1;    // Delegate
-      unsigned res0_  : 22;
+      unsigned res0_  : 21;
     } bits_;
 
     struct   // Third variant
     {
-      unsigned sm_     : 2;  // Source mode
-      unsigned unused_ : 30;
+      unsigned sm_     : 3;  // Source mode
+      unsigned unused_ : 29;
     } bits2_;
   };
 
@@ -311,8 +311,10 @@ namespace TT_APLIC
   {
   public:
 
+    friend class Aplic;
+
     /// Aplic domain constants.
-    enum { IdcOffset = 0x4000, EndId = 1024, EndHart = 16384, Align = 0xfff,
+    enum { IdcOffset = 0x4000, EndId = 1024, EndHart = 16384, Align = 16*1024,
 	   MaxIpriolen = 8 };
 
     /// Default constructor.
@@ -322,22 +324,19 @@ namespace TT_APLIC
     /// Constructor. Interrupt count is one plus the largest supported interrupt
     /// id and must be less than ore equal to EndId. Size is the number of bytes
     /// occupied by this domain in the memory address space.
-    Domain(uint64_t addr, uint64_t size, unsigned hartCount,
-	   unsigned interruptCount, bool hasIdc)
+    Domain(std::shared_ptr<Domain> parent, uint64_t addr, uint64_t size,
+	   unsigned hartCount, unsigned interruptCount, bool isMachine)
       : addr_(addr), size_(size), hartCount_(hartCount),
-	interruptCount_(interruptCount), hasIdc_(hasIdc)
+	interruptCount_(interruptCount), parent_(parent),
+	isMachine_(isMachine)
     {
       defineCsrs();
-      if (hasIdc)
-	defineIdcs();
+      defineIdcs();
       assert(interruptCount <= EndId);
       assert(hartCount <= EndHart);
       assert((addr % Align) == 0);  // Address must be a aligned.
       assert((size % Align) == 0);  // Size must be a multiple of alignment.
-      if (hasIdc)
-	assert(size >= IdcOffset + hartCount * sizeof(Idc));
-      else
-	assert(size >= IdcOffset);
+      assert(size >= IdcOffset + hartCount * sizeof(Idc));
     }
 
     /// Read a memory mapped register associated with this Domain. Return true
@@ -350,14 +349,6 @@ namespace TT_APLIC
     /// on success. Return false if addr is not in the range of this Domain or if
     /// size/alignment is not valid.
     bool write(uint64_t addr, unsigned size, uint64_t value);
-
-    /// Set the given domain as a child of this domain.
-    void addChild(std::shared_ptr<Domain> child)
-    {
-      assert(child.get() != this);
-      assert(not child->parent_);
-      children_.push_back(child); child->parent_.reset(this);
-    }
 
     /// Return a pointer to the child domain or nullptr if this domain has
     /// no child.
@@ -432,7 +423,19 @@ namespace TT_APLIC
     bool directDelivery() const
     { return domaincfg().bits_.dm_; }
 
+    /// Return true if this domain targets machine privilege.
+    bool isMachinePrivilege() const
+    { return isMachine_; }
+
+    /// Return the memory address corresponding to the given CSR number.
+    uint64_t csrAddress(CsrNumber csr) const
+    { return addr_ + uint64_t(csr)*sizeof(CsrValue); }
+
   protected:
+
+    /// Add given child to the children of this domain.
+    void addChild(std::shared_ptr<Domain> child)
+    { children_.push_back(child); }
 
     /// Return the domaincfg CSR value.
     Domaincfg domaincfg() const
@@ -467,15 +470,6 @@ namespace TT_APLIC
     /// no effect if the interrupt id is not active in this domain. The top id
     /// for the target host will be updated as a side effect.
     bool setInterruptPending(unsigned id, bool flag);
-
-    /// Return true if this domain targets machine privilege.
-    bool isMachinePrivilege() const
-    { return isMachine_; }
-
-    /// Set the privilege level of this domain to machine if flag is true;
-    /// otherwise set it to supervisor privilege.
-    void setMachinePrivilege(bool flag)
-    { isMachine_ = flag; }
 
     /// Return true if this is domain is a leaf.
     bool isLeaf() const
@@ -517,13 +511,13 @@ namespace TT_APLIC
     unsigned hartCount_ = 0;
     unsigned interruptCount_ = 0;
     unsigned ipriolen_ = MaxIpriolen;
-    bool hasIdc_ = false;
+    std::shared_ptr<Domain> parent_ = nullptr;
     bool isMachine_ = true;   // Machine privilege.
 
     std::vector<DomainCsr> csrs_;
     std::vector<Idc> idcs_;
     std::vector<std::shared_ptr<Domain>> children_;
-    std::shared_ptr<Domain> parent_;
+    std::vector<bool> activeHarts_;  // Hart active in this domain.
 
     /// Callback to deliver an external interrupt to a hart.
     std::function<bool(unsigned hartIx, bool machine)> deliveryFunc_ = nullptr;

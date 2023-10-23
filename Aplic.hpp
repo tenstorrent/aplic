@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <vector>
 #include <string>
+#include <unordered_map>
 #include "Domain.hpp"
 
 
@@ -20,12 +21,12 @@ namespace TT_APLIC
     /// space region occupied by this Aplic has a size of n = domainCount *
     /// stride and occupies the addresses addr to addr + n - 1.
     Aplic(uint64_t addr, uint64_t stride, unsigned hartCount,
-	  unsigned domainCount, unsigned interruptCount, bool hasIdc);
+	  unsigned domainCount, unsigned interruptCount);
 
     /// Read a memory mapped register associated with this Domain. Return true
     /// on success. Return false leaving value unmodified if addr is not in the
     /// range of this Domain or if size/alignment is not valid.
-    bool read(uint64_t addr, unsigned size, uint64_t& value) const;
+    bool read(uint64_t addr, unsigned size, uint64_t& value);
 
     /// Write a memory mapped register associated with this Domain. Return true
     /// on success. Return false if addr is not in the range of this Domain or if
@@ -38,38 +39,49 @@ namespace TT_APLIC
     /// corresponding interrupt becomes pending.
     bool setSourceState(unsigned id, bool state);
 
+    /// Create a domain and make it a child of the given parent. Create a root
+    /// domain if parent is empty. Root domain must be created before all other
+    /// domain and must have machine privilege. A parent domain must be created
+    /// before its child. Return pointer to created domain or nullptr if we fail
+    /// to create a domain.
+    std::shared_ptr<Domain> createDomain(std::shared_ptr<Domain> parent,
+					 uint64_t addr, bool isMachine);
+
   protected:
 
     /// Return a pointer to the domain covering the given address. Return
     /// nullptr if the address is not valid (must be word aligned) or is out of
     /// bounds.
-    Domain* findDomainByAddr(uint64_t addr)
+    std::shared_ptr<Domain> findDomainByAddr(uint64_t addr)
     {
-      if ((addr & 3) != 0 or addr < addr_ or addr - addr_ >= size_)
+      unsigned regionIx = 0;
+      if (not findRegionByAddr(addr, regionIx))
 	return nullptr;
-      uint64_t domainIx = (addr - addr_) / stride_;
-      return &domains_.at(domainIx);
+      return regionDomains_.at(regionIx);
     }
 
-    /// Same as above but constant.
-    const Domain* findDomainByAddr(uint64_t addr) const
+    /// Find the index of the memory sub-region associated with the given
+    /// address. The Aplic memory region is divided into consecutive sub-regions
+    /// each of size domainSize. Return true on success.  Return false if
+    /// address is outside the memory region of this Aplic.
+    bool findRegionByAddr(uint64_t addr, unsigned& index) const
     {
-      if ((addr & 3) != 0 or addr < addr_ or addr - addr_ >= size_)
-	return nullptr;
-      uint64_t domainIx = (addr - addr_) / stride_;
-      return &domains_.at(domainIx);
+      if (addr < addr_ or addr >= addr_ + stride_*domainCount_)
+	return false;
+      index = (addr - addr_) / stride_;
+      return true;
     }
-
 
   private:
 
     uint64_t addr_ = 0;
-    uint64_t stride_ = 0;
+    uint64_t stride_ = 0;    // Domain size.
     uint64_t size_ = 0;
     unsigned hartCount_ = 0;
     unsigned domainCount_ = 0;
     unsigned interruptCount_ = 0;
-    bool hasIdc_ = false;
-    std::vector<Domain> domains_;
+    std::shared_ptr<Domain> root_ = nullptr;
+    // Vector of domains indexed by memory region.
+    std::vector<std::shared_ptr<Domain>> regionDomains_;
   };
 }
