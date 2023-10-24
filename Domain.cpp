@@ -261,31 +261,19 @@ Domain::postSourcecfgWrite(unsigned csrn)
   if (csrn < unsigned(CN::Sourcecfg1) or csrn > unsigned(CN::Sourcecfg1023))
     return;
 
-  unsigned bitsPerItem = sizeof(CsrValue)*8;
   unsigned id = csrn - unsigned(CN::Sourcecfg1) + 1;
-  unsigned ix = id / bitsPerItem;
-  unsigned bitIx = id % bitsPerItem;
   bool flag = isActive(id);
-
-  // Make ip bit readable or read-only-zero.
-  CsrValue bitMask = CsrValue(1) << bitIx;
-  unsigned ipNum = ix + unsigned(CN::Setip0);
-  CsrValue ipMask = csrs_.at(ipNum).mask();
-  ipMask = flag ? ipMask | bitMask : ipMask & ~bitMask;
-  csrs_.at(ipNum).setMask(ipMask);
-
-  // Make ie bit readable or read-only-zero.
-  unsigned ieNum = ix + unsigned(CN::Setie0);
-  CsrValue ieMask = csrs_.at(ieNum).mask();
-  ieMask = flag ? ieMask | bitMask : ieMask & ~bitMask;
-  csrs_.at(ieNum).setMask(ieMask);
 
   if (not flag)
     {
       // Clear interrupt enabled/pending bits if id is not active.
-      csrs_.at(ipNum).write(csrs_.at(ipNum).read() & ~bitMask);
-      csrs_.at(ieNum).write(csrs_.at(ieNum).read() & ~bitMask);
+      writeIp(id, false);
+      writeIe(id, false);
     }
+
+  // Make ip/IE writeable or read-only-zero.
+  setIpWriteable(id, flag);
+  setIeWriteable(id, flag);
 
   // Check delegation.
   unsigned childIx = 0;
