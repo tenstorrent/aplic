@@ -680,7 +680,7 @@ Domain::setInterruptEnabled(unsigned id, bool flag)
 bool
 Domain::trySetIp(unsigned id)
 {
-  if (id == 0 or id >= interruptCount_ or isDelegated(id))
+  if (not isActive(id))
     return false;
 
   SourceMode mode = sourceMode(id);
@@ -695,7 +695,7 @@ Domain::trySetIp(unsigned id)
 bool
 Domain::tryClearIp(unsigned id)
 {
-  if (id == 0 or id >= interruptCount_ or isDelegated(id))
+  if (not isActive(id))
     return false;
 
   SourceMode mode = sourceMode(id);
@@ -710,7 +710,7 @@ Domain::tryClearIp(unsigned id)
 bool
 Domain::trySetIe(unsigned id)
 {
-  if (id == 0 or id >= interruptCount_ or isDelegated(id))
+  if (not isActive(id))
     return false;
   return setInterruptEnabled(id, true);
 }
@@ -719,7 +719,7 @@ Domain::trySetIe(unsigned id)
 bool
 Domain::tryClearIe(unsigned id)
 {
-  if (id == 0 or id >= interruptCount_ or isDelegated(id))
+  if (not isActive(id))
     return false;
   return setInterruptEnabled(id, false);
 }
