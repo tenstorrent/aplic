@@ -402,11 +402,11 @@ namespace TT_APLIC
     /// hart. When an interrupt becomes active (ready for delivery), the domain
     /// will call this function which will presumably set the M/S external
     /// interrupt pending bit in the MIP CSR of that hart.
-    void setDeliverMethod(std::function<bool(unsigned hartIx, bool machine)> func)
+    void setDeliveryMethod(std::function<bool(unsigned hartIx, bool machine)> func)
     { deliveryFunc_ = func; }
 
     /// Return the IMSIC address for the given hart. This is computed from the
-    /// MMSIADDRCFG CSRs for machine privilegeand from the SMSIADDRCFG CSRS for
+    /// MMSIADDRCFG CSRs for machine privilege and from the SMSIADDRCFG CSRS for
     /// supervisor privilege domains. See section 4.9.1 of the riscv spec.
     uint64_t imsicAddress(unsigned hartIx);
 
@@ -418,7 +418,7 @@ namespace TT_APLIC
     bool interruptEnabled() const
     { return domaincfg().bits_.ie_; }
 
-    /// Return true if deilery mode is direct for this mode. Return false if
+    /// Return true if deilvery mode is direct for this mode. Return false if
     /// delivery mode is through MSI.
     bool directDelivery() const
     { return domaincfg().bits_.dm_; }
@@ -430,6 +430,35 @@ namespace TT_APLIC
     /// Return the memory address corresponding to the given CSR number.
     uint64_t csrAddress(CsrNumber csr) const
     { return addr_ + uint64_t(csr)*sizeof(CsrValue); }
+
+    /// Return the memory address of the IDC structure corresponding to the given hart.
+    uint64_t idcAddress(unsigned hart) const
+    { return addr_ + IdcOffset + hart*sizeof(Idc); }
+
+    /// Return the memory address of the idelivery field of the IDC structure
+    /// corresponding to the given hart.
+    uint64_t ideliveryAddress(unsigned hart) const
+    { return idcAddress(hart); }
+
+    /// Return the memory address of the iforce field of the IDC structure
+    /// corresponding to the given hart.
+    uint64_t iforceAddress(unsigned hart) const
+    { return idcAddress(hart) + sizeof(CsrValue); }
+
+    /// Return the memory address of the ithreshold_ field of the IDC structure
+    /// corresponding to the given hart.
+    uint64_t ithresholdAddress(unsigned hart) const
+    { return idcAddress(hart) + 2*sizeof(CsrValue); }
+
+    /// Return the memory address of the topi field of the IDC structure
+    /// corresponding to the given hart.
+    uint64_t topiAddress(unsigned hart) const
+    { return idcAddress(hart) + 3*sizeof(CsrValue); }
+
+    /// Return the memory address of the claimi field of the IDC structure
+    /// corresponding to the given hart.
+    uint64_t claimiAddress(unsigned hart) const
+    { return idcAddress(hart) + 4*sizeof(CsrValue); }
 
   protected:
 
@@ -471,6 +500,22 @@ namespace TT_APLIC
     /// for the target host will be updated as a side effect.
     bool setInterruptPending(unsigned id, bool flag);
 
+    /// Set the interrupt enabled bit of the given id. Return true if
+    /// sucessful. Return false if it is not possible to set the bit (see
+    /// secion 4.7 of the riscv-interrupt spec).
+    bool trySetIe(unsigned id);
+
+    /// Clear the interrupt enabled bit of the given id. Return true if
+    /// sucessful. Return false if it is not possible to set the bit (see
+    /// secion 4.7 of the riscv-interrupt spec).
+    bool tryClearIe(unsigned id);
+
+    /// Set the interrupt enablde bit corresponding to the given interrupt id to
+    /// flag. Return true on success and false if id is out of bounds. This has
+    /// no effect if the interrupt id is not active in this domain. The top id
+    /// for the target host will be updated as a side effect.
+    bool setInterruptEnabled(unsigned id, bool flag);
+
     /// Return true if this is domain is a leaf.
     bool isLeaf() const
     { return children_.empty(); }
@@ -495,6 +540,30 @@ namespace TT_APLIC
     /// Called after a CSR write to update masks and bits depending on sourcecfg
     /// if sourcecfg is written. Number of written CSR is passed in csrn.
     void postSourcecfgWrite(unsigned csrn);
+
+    /// Make writeable/non-writeable the bit corresponding to id in the given
+    /// set of CSRs when given flag is true/false.
+    void makeWriteable(unsigned id, CsrNumber csrn, bool flag)
+    {
+      if (id == 0 or id >= interruptCount_)
+	return;
+      CsrNumber cn = advance(csrn, id);
+      unsigned bitsPerValue = sizeof(CsrValue)*8;
+      CsrValue bitMask = CsrValue(1) << (id % bitsPerValue);
+      CsrValue mask = csrAt(cn).mask();
+      mask = flag? mask | bitMask : mask & ~bitMask;
+      csrAt(cn).setMask(mask);
+    }
+
+    /// Make writeable/non-writeable the interrupt-enabled bit corresponding to
+    /// id when given flag is true/false.
+    void setIeWriteable(unsigned id, bool flag)
+    { makeWriteable(id, CsrNumber::Setie0, flag); }
+
+    /// Make writeable/non-writeable the interrupt-pending bit corresponding to
+    /// id when given flag is true/false.
+    void setIpWriteable(unsigned id, bool flag)
+    { makeWriteable(id, CsrNumber::Setip0, flag); }
 
     /// Advance a csr number by the given amount (add amount to number).
     static CsrNumber advance(CsrNumber csrn, uint32_t amount)

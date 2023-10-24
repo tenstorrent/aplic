@@ -98,5 +98,6 @@ Aplic::createDomain(std::shared_ptr<Domain> parent, uint64_t addr, bool isMachin
   if (parent)
     parent->addChild(domain);
 
+  domain->setDeliveryMethod(deliveryFunc_);
   return domain;
 }

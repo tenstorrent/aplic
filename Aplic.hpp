@@ -47,6 +47,18 @@ namespace TT_APLIC
     std::shared_ptr<Domain> createDomain(std::shared_ptr<Domain> parent,
 					 uint64_t addr, bool isMachine);
 
+    /// Define a callback function for this Aplic to deliver an interrupt to a
+    /// hart. When an interrupt becomes active (ready for delivery), the Aplic
+    /// will call this function which will presumably set the M/S external
+    /// interrupt pending bit in the MIP CSR of that hart.
+    void setDeliveryMethod(std::function<bool(unsigned hartIx, bool machine)> func)
+    {
+      deliveryFunc_ = func;
+      for (auto domain : regionDomains_)
+	if (domain)
+	  domain->setDeliveryMethod(func);
+    }
+
   protected:
 
     /// Return a pointer to the domain covering the given address. Return
@@ -83,5 +95,8 @@ namespace TT_APLIC
     std::shared_ptr<Domain> root_ = nullptr;
     // Vector of domains indexed by memory region.
     std::vector<std::shared_ptr<Domain>> regionDomains_;
+
+    /// Callback to deliver an external interrupt to a hart.
+    std::function<bool(unsigned hartIx, bool machine)> deliveryFunc_ = nullptr;
   };
 }

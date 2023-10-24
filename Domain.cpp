@@ -1,3 +1,4 @@
+#include <iostream>
 #include "Domain.hpp"
 
 using namespace TT_APLIC;
@@ -69,13 +70,6 @@ Domain::write(uint64_t addr, unsigned size, uint64_t value)
   uint64_t itemIx = (addr - addr_) / reqSize;
   if (itemIx < csrs_.size())
     {
-      if (itemIx >= unsigned(CN::Sourcecfg1) and
-	  itemIx <= unsigned(CN::Sourcecfg1023))
-	{
-	  if (isLeaf())
-	    val = 0;
-	}
-
       if (itemIx >= unsigned(CN::Setip0) and itemIx <= unsigned(CN::Setip31))
 	{
 	  unsigned id0 = (itemIx - unsigned(CN::Setip0)) * bitsPerItem;
@@ -112,6 +106,12 @@ Domain::write(uint64_t addr, unsigned size, uint64_t value)
 	  val = value;
 	  val = __builtin_bswap32(val);
 	  trySetIp(value);
+	  return true;
+	}
+      else if (itemIx == unsigned(CN::Setienum))
+	{
+	  val = value;
+	  trySetIe(value);
 	  return true;
 	}
 
@@ -268,8 +268,21 @@ Domain::postSourcecfgWrite(unsigned csrn)
   csrs_.at(ieNum).setMask(ieMask);
 
   // Check delegation.
-  CsrValue cfgMask = isDelegated(id) ? Sourcecfg::delegatedMask() : Sourcecfg::nonDelegatedMask();
+  unsigned childIx = 0;
+  bool delegated = isDelegated(id, childIx);
+  CsrValue cfgMask = delegated ? Sourcecfg::delegatedMask() : Sourcecfg::nonDelegatedMask();
   csrs_.at(csrn).setMask(cfgMask);
+  if (delegated)
+    {
+      // Child Sourcecfg mask for given id is now writeable.
+      auto child = children_.at(childIx);
+      CsrValue childMask = Sourcecfg::nonDelegatedMask();
+      child->csrs_.at(csrn).setMask(childMask);
+
+      // Interrupt pending and enabeld now writeable in child.
+      child->setIeWriteable(id, true);
+      child->setIpWriteable(id, true);
+    }
 
   if (not flag)
     {
@@ -278,8 +291,7 @@ Domain::postSourcecfgWrite(unsigned csrn)
       csrs_.at(ieNum).write(csrs_.at(ieNum).read() & ~bitMask);
     }
 
-  if (flag)
-    assert(0 && "Evaluate source for interrupt delivery");
+  std::cerr << "Evaluate source for interrupt delivery\n";
 }
 
 
@@ -507,6 +519,7 @@ Domain::setInterruptPending(unsigned id, bool flag)
   value &= ~mask;  // Clear bit.
   if (flag)
     value |= mask;
+  csrAt(cn).write(value);
 
   // Determine interrupt target and priority.
   CN ntc = advance(CN::Target1, id - 1);  // Number of target CSR.
@@ -523,6 +536,92 @@ Domain::setInterruptPending(unsigned id, bool flag)
       IdcTopi topi{idc.topi_};
       unsigned topPrio = topi.bits_.prio_;
       if (flag and enabled)
+	{
+	  if (prio < topPrio or (prio == topPrio and id < topi.bits_.id_))
+	    {
+	      topi.bits_.prio_ = prio;
+	      topi.bits_.id_ = id;
+	    }
+	}
+      else if (id == topi.bits_.id_ and not flag)
+	{
+	  // Interrupt that used to determine our top id went away. Re-compute
+	  // top id and priority in interrupt delivery control.
+	  topi.bits_.prio_ = 0;
+	  topi.bits_.id_ = 0;
+	  for (unsigned iid = 1; iid < interruptCount_; ++iid)
+	    {
+	      CN ntc = advance(CN::Target1, iid - 1);
+	      CsrValue targetVal = csrAt(ntc).read();
+	      Target target{targetVal};
+	      if (target.bits_.hart_ == hart)
+		if (topi.bits_.prio_ == 0 or target.bits_.prio_ < topi.bits_.prio_)
+		  {
+		    topi.bits_.prio_ = target.bits_.prio_;
+		    topi.bits_.id_ = iid;
+		  }
+	    }
+	}
+
+      idc.topi_ = topi.value_;  // Update IDC.
+
+      CsrValue dcfgVal = csrAt(CN::Domaincfg).read();
+      Domaincfg dcfg{dcfgVal};
+      if ((topi.bits_.prio_ < idc.ithreshold_ or idc.ithreshold_ == 0) and
+	  idc.idelivery_ and interruptEnabled() and deliveryFunc_)
+	deliveryFunc_(hart, isMachinePrivilege());
+    }
+  else
+    {
+      // Deliver using IMSIC
+      assert(0);
+    }
+
+  return true;
+}
+
+
+bool
+Domain::setInterruptEnabled(unsigned id, bool flag)
+{
+  if (id == 0 or id > interruptCount_ or isDelegated(id))
+    return false;
+
+  using CN = CsrNumber;
+
+  CN cn = advance(CN::Setie0, id);  // Number of CSR containing interrupt enabled bits.
+  unsigned bitsPerItem = sizeof(CsrValue) * 8;
+  unsigned bitIx = id % bitsPerItem;
+  CsrValue mask = CsrValue(1) << bitIx;
+  CsrValue value = csrAt(cn).read();
+  bool prev = value & mask;
+  if (prev == flag)
+    return true;  // Value did not change.
+
+  CN nip = advance(CN::Setip0, id); // Number of interrupt enable CSR.
+  bool pending = csrAt(nip).read() & mask;
+
+  // Update interrupt enabled bit.
+  value &= ~mask;  // Clear bit.
+  if (flag)
+    value |= mask;
+  csrAt(cn).write(value);
+
+  // Determine interrupt target and priority.
+  CN ntc = advance(CN::Target1, id - 1);  // Number of target CSR.
+  auto targetVal = csrAt(ntc).read();
+  Target target{targetVal};
+  unsigned prio =  target.bits_.prio_;
+  unsigned hart = target.bits_.hart_;
+
+  if (directDelivery())
+    {
+      // Update top priority interrupt. Lower priority number wins.
+      // For tie, lower source id wins
+      auto& idc = idcs_.at(hart);
+      IdcTopi topi{idc.topi_};
+      unsigned topPrio = topi.bits_.prio_;
+      if (flag and pending)
 	{
 	  if (prio <= topPrio or (prio == topPrio and id < topi.bits_.id_))
 	    {
@@ -595,6 +694,24 @@ Domain::tryClearIp(unsigned id)
       return false;  // Cannot clear by a write in direct delivery mode
 
   return setInterruptPending(id, false);
+}
+
+
+bool
+Domain::trySetIe(unsigned id)
+{
+  if (id == 0 or id >= interruptCount_ or isDelegated(id))
+    return false;
+  return setInterruptEnabled(id, true);
+}
+
+
+bool
+Domain::tryClearIe(unsigned id)
+{
+  if (id == 0 or id >= interruptCount_ or isDelegated(id))
+    return false;
+  return setInterruptEnabled(id, false);
 }
 
 
