@@ -457,6 +457,8 @@ setSourceState(unsigned id, bool state)
   Target target{targetVal};
 
   SourceMode mode = sourceMode(id);
+  if (mode == SourceMode::Detached)
+    return true;   // Detached input ignored
 
   // Determine value of interrupt pending.
   bool ip = (mode == SourceMode::Edge1 or mode == SourceMode::Level1) == state;
