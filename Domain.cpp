@@ -70,7 +70,15 @@ Domain::write(uint64_t addr, unsigned size, uint64_t value)
   uint64_t itemIx = (addr - addr_) / reqSize;
   if (itemIx < csrs_.size())
     {
-      if (itemIx >= unsigned(CN::Setip0) and itemIx <= unsigned(CN::Setip31))
+      if (itemIx >= uint64_t(CN::Mmsiaddrcfg) and itemIx <= uint64_t(CN::Smsiaddrcfgh))
+	{
+	  auto root = rootDomain();
+	  assert(root);
+	  bool rootLocked = (root->csrAt(CN::Mmsiaddrcfgh).read() >> 31) & 1;
+	  if (rootLocked or not isRoot())
+	    return true; // No effect if not rooot or if root is locked.
+	}
+      else if (itemIx >= unsigned(CN::Setip0) and itemIx <= unsigned(CN::Setip31))
 	{
 	  unsigned id0 = (itemIx - unsigned(CN::Setip0)) * bitsPerItem;
 	  for (unsigned bitIx = 0; bitIx < bitsPerItem; ++bitIx)
