@@ -30,7 +30,6 @@ Domain::read(uint64_t addr, unsigned size, uint64_t& value)
       if (ix >= uint64_t(CN::Mmsiaddrcfg) and ix <= uint64_t(CN::Smsiaddrcfgh))
 	{
 	  auto root = rootDomain();
-	  assert(root);
 	  bool rootLocked = (root->csrAt(CN::Mmsiaddrcfgh).read() >> 31) & 1;
 	  if (rootLocked or not isRoot())
 	    val = ix == uint64_t(CN::Mmsiaddrcfgh) ? 0x80000000 : 0;
@@ -73,7 +72,6 @@ Domain::write(uint64_t addr, unsigned size, uint64_t value)
       if (itemIx >= uint64_t(CN::Mmsiaddrcfg) and itemIx <= uint64_t(CN::Smsiaddrcfgh))
 	{
 	  auto root = rootDomain();
-	  assert(root);
 	  bool rootLocked = (root->csrAt(CN::Mmsiaddrcfgh).read() >> 31) & 1;
 	  if (rootLocked or not isRoot())
 	    return true; // No effect if not rooot or if root is locked.
@@ -582,8 +580,14 @@ Domain::setInterruptPending(unsigned id, bool flag)
     }
   else
     {
-      // Deliver using IMSIC
-      assert(0);
+      // Deliver to IMSIC
+      if (interruptEnabled() and memoryWrite_)
+	{
+	  uint64_t imsicAddr = imsicAddress(hart);
+	  uint32_t eiid = target.mbits_.eiid_;
+	  memoryWrite_(imsicAddr, sizeof(eiid), eiid);
+	  writeIp(id, false);  // Clear interrupt pending.
+	}
     }
 
   return true;

@@ -244,7 +244,7 @@ namespace TT_APLIC
 
     struct             // Third variant (MSI delivery)
     {
-      unsigned eeid_  : 11;
+      unsigned eiid_  : 11;
       unsigned res1_  : 1;
       unsigned guest_ : 6;
       unsigned mhart_ : 14;
@@ -404,6 +404,12 @@ namespace TT_APLIC
     /// interrupt pending bit in the MIP CSR of that hart.
     void setDeliveryMethod(std::function<bool(unsigned hartIx, bool machine)> func)
     { deliveryFunc_ = func; }
+
+    /// Define a callback function for the domain to write to a memory location.
+    /// This is used to deliver interrupts to the IMSIC by writing to the IMSIC
+    /// address.
+    void setMemoryWriteMethod(std::function<bool(uint64_t addr, unsigned size, uint64_t value)> func)
+    { memoryWrite_ = func; }
 
     /// Return the IMSIC address for the given hart. This is computed from the
     /// MMSIADDRCFG CSRs for machine privilege and from the SMSIADDRCFG CSRS for
@@ -637,6 +643,8 @@ namespace TT_APLIC
 
     /// Callback to deliver an external interrupt to a hart.
     std::function<bool(unsigned hartIx, bool machine)> deliveryFunc_ = nullptr;
+
+    std::function<bool(uint64_t addr, unsigned size, uint64_t data)> memoryWrite_ = nullptr;
 
   };
 
