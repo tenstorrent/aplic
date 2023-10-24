@@ -114,6 +114,11 @@ Domain::write(uint64_t addr, unsigned size, uint64_t value)
 	  trySetIe(value);
 	  return true;
 	}
+      else if (itemIx < unsigned(CN::Sourcecfg1) or itemIx > unsigned(CN::Sourcecfg1023))
+	{
+	  if (isLeaf() and Sourcecfg{val}.bits_.d_)
+	    val = 0;  // Section 4.5.2 of spec: Attempt to set D in a leaf domain
+	}
 
       csrs_.at(itemIx).write(val);
 
@@ -267,28 +272,45 @@ Domain::postSourcecfgWrite(unsigned csrn)
   ieMask = flag ? ieMask | bitMask : ieMask & ~bitMask;
   csrs_.at(ieNum).setMask(ieMask);
 
-  // Check delegation.
-  unsigned childIx = 0;
-  bool delegated = isDelegated(id, childIx);
-  CsrValue cfgMask = delegated ? Sourcecfg::delegatedMask() : Sourcecfg::nonDelegatedMask();
-  csrs_.at(csrn).setMask(cfgMask);
-  if (delegated)
-    {
-      // Child Sourcecfg mask for given id is now writeable.
-      auto child = children_.at(childIx);
-      CsrValue childMask = Sourcecfg::nonDelegatedMask();
-      child->csrs_.at(csrn).setMask(childMask);
-
-      // Interrupt pending and enabeld now writeable in child.
-      child->setIeWriteable(id, true);
-      child->setIpWriteable(id, true);
-    }
-
   if (not flag)
     {
       // Clear interrupt enabled/pending bits if id is not active.
       csrs_.at(ipNum).write(csrs_.at(ipNum).read() & ~bitMask);
       csrs_.at(ieNum).write(csrs_.at(ieNum).read() & ~bitMask);
+    }
+
+  // Check delegation.
+  unsigned childIx = 0;
+  bool delegated = isDelegated(id, childIx);
+  CsrValue cfgMask = delegated ? Sourcecfg::delegatedMask() : Sourcecfg::nonDelegatedMask();
+  csrs_.at(csrn).setMask(cfgMask);
+  if (childIx < children_.size())
+    {
+      auto child = children_.at(childIx);
+      if (delegated)
+	{
+	  // Child Sourcecfg mask for given id is now writeable.
+	  child->csrs_.at(csrn).setMask(Sourcecfg::nonDelegatedMask());
+
+	  // Parent Sourcecfg mask is now for delegated
+	  csrs_.at(csrn).setMask(Sourcecfg::delegatedMask());
+	}
+      else
+	{
+	  // Child Sourcecfg mask for given id is now non-writeable
+	  child->csrs_.at(csrn).setMask(0);
+
+	  // Parent Sourcecfg mask is now for non-delegated
+	  csrs_.at(csrn).setMask(Sourcecfg::nonDelegatedMask());
+	}
+
+      // Interrupt pending and enabeld now writeable in child if delegated.
+      child->setIeWriteable(id, delegated);
+      child->setIpWriteable(id, delegated);
+
+      // Interrupt pending and enabeld now writeable in parent if non-delegated.
+      setIeWriteable(id, not delegated);
+      setIpWriteable(id, not delegated);
     }
 
   std::cerr << "Evaluate source for interrupt delivery\n";
