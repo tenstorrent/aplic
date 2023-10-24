@@ -95,7 +95,7 @@ namespace TT_APLIC
       : value_(value)
     { }
 
-    /// Mask of writeable bits.
+    /// Mask of writable bits.
     constexpr static CsrValue mask()
     { return 0b0000'0000'0000'0000'0000'0001'1000'0101; }
 
@@ -122,11 +122,11 @@ namespace TT_APLIC
       : value_(value)
     { }
 
-    /// Mask of writeable bits when delegated (D == 1).
+    /// Mask of writable bits when delegated (D == 1).
     constexpr static CsrValue delegatedMask()
     { return 0b111'1111'1111; }
 
-    /// Mask of writeable bits when not delegated (D == 0).
+    /// Mask of writable bits when not delegated (D == 0).
     constexpr static CsrValue nonDelegatedMask()
     { return 0b100'0000'0111; }
 
@@ -154,7 +154,7 @@ namespace TT_APLIC
       : value_(value)
     { }
 
-    /// Mask of writeable bits.
+    /// Mask of writable bits.
     constexpr static CsrValue mask()
     { return 0b1001'1111'0111'0111'1111'1111'1111'1111; }
 
@@ -182,7 +182,7 @@ namespace TT_APLIC
       : value_(value)
     { }
 
-    /// Mask of writeable bits.
+    /// Mask of writable bits.
     constexpr static CsrValue mask()
     { return 0b0000'0000'0111'0000'0000'1111'1111'1111; }
 
@@ -205,7 +205,7 @@ namespace TT_APLIC
       : value_(value)
     { }
 
-    /// Mask of writeable bits.
+    /// Mask of writable bits.
     constexpr static CsrValue mask()
     { return 0b1111'1111'1111'1100'0001'0111'1111'1111; }
 
@@ -229,7 +229,7 @@ namespace TT_APLIC
       : value_(value)
     { }
 
-    /// Mask of writeable bits.
+    /// Mask of writable bits.
     constexpr static CsrValue mask()
     { return 0b1111'1111'1111'1100'0000'0000'1111'1111; }
 
@@ -424,7 +424,7 @@ namespace TT_APLIC
     bool interruptEnabled() const
     { return domaincfg().bits_.ie_; }
 
-    /// Return true if deilvery mode is direct for this mode. Return false if
+    /// Return true if delivery mode is direct for this mode. Return false if
     /// delivery mode is through MSI.
     bool directDelivery() const
     { return domaincfg().bits_.dm_; }
@@ -491,13 +491,13 @@ namespace TT_APLIC
     bool writeIdc(uint64_t addr, unsigned size, CsrValue value);
 
     /// Set the interrupt pending bit of the given id. Return true if
-    /// sucessful. Return false if it is not possible to set the bit (see
-    /// secion 4.7 of the riscv-interrupt spec).
+    /// successful. Return false if it is not possible to set the bit (see
+    /// section 4.7 of the riscv-interrupt spec).
     bool trySetIp(unsigned id);
 
     /// Clear the interrupt pending bit of the given id. Return true if
-    /// sucessful. Return false if it is not possible to set the bit (see
-    /// secion 4.7 of the riscv-interrupt spec).
+    /// successful. Return false if it is not possible to set the bit (see
+    /// section 4.7 of the riscv-interrupt spec).
     bool tryClearIp(unsigned id);
 
     /// Set the interrupt pending bit corresponding to the given interrupt id to
@@ -507,16 +507,16 @@ namespace TT_APLIC
     bool setInterruptPending(unsigned id, bool flag);
 
     /// Set the interrupt enabled bit of the given id. Return true if
-    /// sucessful. Return false if it is not possible to set the bit (see
-    /// secion 4.7 of the riscv-interrupt spec).
+    /// successful. Return false if it is not possible to set the bit (see
+    /// section 4.7 of the riscv-interrupt spec).
     bool trySetIe(unsigned id);
 
     /// Clear the interrupt enabled bit of the given id. Return true if
-    /// sucessful. Return false if it is not possible to set the bit (see
-    /// secion 4.7 of the riscv-interrupt spec).
+    /// successful. Return false if it is not possible to set the bit (see
+    /// section 4.7 of the riscv-interrupt spec).
     bool tryClearIe(unsigned id);
 
-    /// Set the interrupt enablde bit corresponding to the given interrupt id to
+    /// Set the interrupt enabled bit corresponding to the given interrupt id to
     /// flag. Return true on success and false if id is out of bounds. This has
     /// no effect if the interrupt id is not active in this domain. The top id
     /// for the target host will be updated as a side effect.
@@ -547,9 +547,9 @@ namespace TT_APLIC
     /// if sourcecfg is written. Number of written CSR is passed in csrn.
     void postSourcecfgWrite(unsigned csrn);
 
-    /// Make writeable/non-writeable the bit corresponding to id in the given
+    /// Make writable/non-writable the bit corresponding to id in the given
     /// set of CSRs when given flag is true/false.
-    void makeWriteable(unsigned id, CsrNumber csrn, bool flag)
+    void makeWritable(unsigned id, CsrNumber csrn, bool flag)
     {
       if (id == 0 or id >= interruptCount_)
 	return;
@@ -561,15 +561,15 @@ namespace TT_APLIC
       csrAt(cn).setMask(mask);
     }
 
-    /// Make writeable/non-writeable the interrupt-enabled bit corresponding to
+    /// Make writable/non-writable the interrupt-enabled bit corresponding to
     /// id when given flag is true/false.
-    void setIeWriteable(unsigned id, bool flag)
-    { makeWriteable(id, CsrNumber::Setie0, flag); }
+    void setIeWritable(unsigned id, bool flag)
+    { makeWritable(id, CsrNumber::Setie0, flag); }
 
-    /// Make writeable/non-writeable the interrupt-pending bit corresponding to
+    /// Make writable/non-writable the interrupt-pending bit corresponding to
     /// id when given flag is true/false.
-    void setIpWriteable(unsigned id, bool flag)
-    { makeWriteable(id, CsrNumber::Setip0, flag); }
+    void setIpWritable(unsigned id, bool flag)
+    { makeWritable(id, CsrNumber::Setip0, flag); }
 
     /// Advance a csr number by the given amount (add amount to number).
     static CsrNumber advance(CsrNumber csrn, uint32_t amount)
@@ -581,7 +581,7 @@ namespace TT_APLIC
 
     /// Return the value of the interrupt bit (pending or enabled) corresponding
     /// to the given interrupt id and the given CSR which must be the first
-    /// CSR in its sequnce (i.e. Setip0 or Setie0)
+    /// CSR in its sequence (i.e. Setip0 or Setie0)
     bool readBit(unsigned id, CsrNumber csrn) const
     {
       auto cn = advance(csrn, id);

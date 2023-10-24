@@ -73,7 +73,7 @@ Aplic::createDomain(std::shared_ptr<Domain> parent, uint64_t addr, bool isMachin
     return nullptr;    // Addr is out of bounds.
 
   if (regionDomains_.at(regionIx))
-    return nullptr;    // Regoin of addr already occupied.
+    return nullptr;    // Region of addr already occupied.
 
   if (not root_ and parent)
     return nullptr;   // First created domain must be root.

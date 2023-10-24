@@ -74,9 +74,9 @@ Domain::write(uint64_t addr, unsigned size, uint64_t value)
 	  auto root = rootDomain();
 	  bool rootLocked = (root->csrAt(CN::Mmsiaddrcfgh).read() >> 31) & 1;
 	  if (rootLocked or not isRoot())
-	    return true; // No effect if not rooot or if root is locked.
+	    return true; // No effect if not root or if root is locked.
 	}
-      else if (itemIx >= unsigned(CN::Setip0) and itemIx <= unsigned(CN::Setip31))
+      else if (itemIx >= uint64_t(CN::Setip0) and itemIx <= uint64_t(CN::Setip31))
 	{
 	  unsigned id0 = (itemIx - unsigned(CN::Setip0)) * bitsPerItem;
 	  for (unsigned bitIx = 0; bitIx < bitsPerItem; ++bitIx)
@@ -84,12 +84,12 @@ Domain::write(uint64_t addr, unsigned size, uint64_t value)
 	      trySetIp(id0 + bitIx);
 	  return true;
 	}
-      else if (itemIx == unsigned(CN::Setipnum))
+      else if (itemIx == uint64_t(CN::Setipnum))
 	{
 	  trySetIp(val);  // Value is the interrupt id.
 	  return true;  // Setipnum CSR is not updated (read zero).
 	}
-      if (itemIx >= unsigned(CN::Inclrip0) and itemIx <= unsigned(CN::Inclrip31))
+      if (itemIx >= uint64_t(CN::Inclrip0) and itemIx <= uint64_t(CN::Inclrip31))
 	{
 	  unsigned id0 = (itemIx - unsigned(CN::Inclrip0)) * bitsPerItem;
 	  for (unsigned bitIx = 0; bitIx < bitsPerItem; ++bitIx)
@@ -97,30 +97,30 @@ Domain::write(uint64_t addr, unsigned size, uint64_t value)
 	      tryClearIp(id0 + bitIx);
 	  return true;
 	}
-      else if (itemIx == unsigned(CN::Clripnum))
+      else if (itemIx == uint64_t(CN::Clripnum))
 	{
 	  tryClearIp(val);  // Value is the interrupt id.
 	  return true;
 	}
-      else if (itemIx == unsigned(CN::Setipnumle))
+      else if (itemIx == uint64_t(CN::Setipnumle))
 	{
 	  trySetIp(value);
 	  return true;
 	}
-      else if (itemIx == unsigned(CN::Setipnumbe))
+      else if (itemIx == uint64_t(CN::Setipnumbe))
 	{
 	  val = value;
 	  val = __builtin_bswap32(val);
 	  trySetIp(value);
 	  return true;
 	}
-      else if (itemIx == unsigned(CN::Setienum))
+      else if (itemIx == uint64_t(CN::Setienum))
 	{
 	  val = value;
 	  trySetIe(value);
 	  return true;
 	}
-      else if (itemIx < unsigned(CN::Sourcecfg1) or itemIx > unsigned(CN::Sourcecfg1023))
+      else if (itemIx < uint64_t(CN::Sourcecfg1) or itemIx > uint64_t(CN::Sourcecfg1023))
 	{
 	  if (isLeaf() and Sourcecfg{val}.bits_.d_)
 	    val = 0;  // Section 4.5.2 of spec: Attempt to set D in a leaf domain
@@ -239,10 +239,10 @@ Domain::writeIdc(uint64_t addr, unsigned size, CsrValue value)
       break;
 
     case 3  :
-      break;  // topi is not writeable
+      break;  // topi is not writable
 
     case 4  :
-      break;  // claimi is not writeable
+      break;  // claimi is not writable
 
     default :
       break;
@@ -269,9 +269,9 @@ Domain::postSourcecfgWrite(unsigned csrn)
       writeIe(id, false);
     }
 
-  // Make ip/IE writeable or read-only-zero.
-  setIpWriteable(id, flag);
-  setIeWriteable(id, flag);
+  // Make ip/IE writable or read-only-zero.
+  setIpWritable(id, flag);
+  setIeWritable(id, flag);
 
   // Check delegation.
   unsigned childIx = 0;
@@ -283,7 +283,7 @@ Domain::postSourcecfgWrite(unsigned csrn)
       auto child = children_.at(childIx);
       if (delegated)
 	{
-	  // Child Sourcecfg mask for given id is now writeable.
+	  // Child Sourcecfg mask for given id is now writable.
 	  child->csrs_.at(csrn).setMask(Sourcecfg::nonDelegatedMask());
 
 	  // Parent Sourcecfg mask is now for delegated
@@ -291,20 +291,20 @@ Domain::postSourcecfgWrite(unsigned csrn)
 	}
       else
 	{
-	  // Child Sourcecfg mask for given id is now non-writeable
+	  // Child Sourcecfg mask for given id is now non-writable
 	  child->csrs_.at(csrn).setMask(0);
 
 	  // Parent Sourcecfg mask is now for non-delegated
 	  csrs_.at(csrn).setMask(Sourcecfg::nonDelegatedMask());
 	}
 
-      // Interrupt pending and enabeld now writeable in child if delegated.
-      child->setIeWriteable(id, delegated);
-      child->setIpWriteable(id, delegated);
+      // Interrupt pending and enabled now writable in child if delegated.
+      child->setIeWritable(id, delegated);
+      child->setIpWritable(id, delegated);
 
-      // Interrupt pending and enabeld now writeable in parent if non-delegated.
-      setIeWriteable(id, not delegated);
-      setIpWriteable(id, not delegated);
+      // Interrupt pending and enabled now writable in parent if non-delegated.
+      setIeWritable(id, not delegated);
+      setIpWritable(id, not delegated);
     }
 
   std::cerr << "Evaluate source for interrupt delivery\n";
@@ -326,7 +326,7 @@ Domain::defineCsrs()
 
   reset = 0;
   std::string base = "sourcecfg";
-  for (unsigned ix = 1; ix <= 1023; ++ix)
+  for (unsigned ix = 1; ix < EndId; ++ix)
     {
       if (ix >= interruptCount_)
 	mask = 0;
@@ -422,7 +422,7 @@ Domain::defineCsrs()
   mask = 0;
   reset = 0;
   base = "target";
-  for (unsigned ix = 1; ix <= 1023; ++ix)
+  for (unsigned ix = 1; ix < EndId; ++ix)
     {
       mask = ix < interruptCount_ ? Target::mask() : 0;
       std::string name = base + std::to_string(ix);
