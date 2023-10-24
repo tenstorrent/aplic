@@ -378,7 +378,7 @@ Domain::defineCsrs()
     {
       mask = ix == 0 ? ~CsrValue(1) : ~CsrValue(0);
       std::string name = base + std::to_string(ix);
-      CN cn= advance(CN::Setie0, + ix);
+      CN cn = advance(CN::Setie0, + ix);
       csrAt(cn) = DomainCsr(name, cn, reset, mask);
     }
   csrAt(CN::Setienum) = DomainCsr("setienum", CN::Setienum, reset, allOnes);
@@ -525,23 +525,14 @@ Domain::setInterruptPending(unsigned id, bool flag)
 
   using CN = CsrNumber;
 
-  CN cn = advance(CN::Setip0, id);  // Number of CSR containing interrupt pending bits.
-  unsigned bitsPerItem = sizeof(CsrValue) * 8;
-  unsigned bitIx = id % bitsPerItem;
-  CsrValue mask = CsrValue(1) << bitIx;
-  CsrValue value = csrAt(cn).read();
-  bool prev = value & mask;
+  bool prev = readIp(id);
   if (prev == flag)
     return true;  // Value did not change.
 
-  CN neic = advance(CN::Setie0, id); // Number of interrupt enable CSR.
-  bool enabled = csrAt(neic).read() & mask;
+  bool enabled = readIe(id);
 
   // Update interrupt pending bit.
-  value &= ~mask;  // Clear bit.
-  if (flag)
-    value |= mask;
-  csrAt(cn).write(value);
+  writeIp(id, flag);
 
   // Determine interrupt target and priority.
   CN ntc = advance(CN::Target1, id - 1);  // Number of target CSR.
@@ -611,23 +602,14 @@ Domain::setInterruptEnabled(unsigned id, bool flag)
 
   using CN = CsrNumber;
 
-  CN cn = advance(CN::Setie0, id);  // Number of CSR containing interrupt enabled bits.
-  unsigned bitsPerItem = sizeof(CsrValue) * 8;
-  unsigned bitIx = id % bitsPerItem;
-  CsrValue mask = CsrValue(1) << bitIx;
-  CsrValue value = csrAt(cn).read();
-  bool prev = value & mask;
+  bool prev = readIe(id);
   if (prev == flag)
     return true;  // Value did not change.
 
-  CN nip = advance(CN::Setip0, id); // Number of interrupt enable CSR.
-  bool pending = csrAt(nip).read() & mask;
+  bool pending = readIp(id);
 
   // Update interrupt enabled bit.
-  value &= ~mask;  // Clear bit.
-  if (flag)
-    value |= mask;
-  csrAt(cn).write(value);
+  writeIe(id, flag);
 
   // Determine interrupt target and priority.
   CN ntc = advance(CN::Target1, id - 1);  // Number of target CSR.

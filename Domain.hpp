@@ -573,6 +573,53 @@ namespace TT_APLIC
     static CsrNumber advance(CsrNumber csrn, int32_t amount)
     { return CsrNumber(CsrValue(csrn) + amount); }
 
+    /// Return the value of the interrupt bit (pending or enabled) corresponding
+    /// to the given interrupt id and the given CSR which must be the first
+    /// CSR in its sequnce (i.e. Setip0 or Setie0)
+    bool readBit(unsigned id, CsrNumber csrn) const
+    {
+      auto cn = advance(csrn, id);
+      unsigned bitsPerItem = sizeof(CsrValue) * 8;
+      unsigned bitIx = id % bitsPerItem;
+      CsrValue bitMask = CsrValue(1) << bitIx;
+      CsrValue value = csrs_.at(unsigned(cn)).read();
+      bool ip = value & bitMask;
+      return ip;
+    }
+    
+    /// Set the value of the interrupt pending bit corresponding to the
+    /// given interrupt id. Caller must check if write is legal.
+    void writeBit(unsigned id, CsrNumber csrn, bool flag)
+    {
+      auto cn = advance(csrn, id);
+      unsigned bitsPerItem = sizeof(CsrValue) * 8;
+      unsigned bitIx = id % bitsPerItem;
+      CsrValue bitMask = CsrValue(1) << bitIx;
+      CsrValue value = csrs_.at(unsigned(cn)).read();
+      value = flag ? value | bitMask : value & ~bitMask;
+      csrs_.at(unsigned(cn)).write(value);
+    }
+
+    /// Return the value of the interrupt pending bit corresponding to the
+    /// given interrupt id.
+    bool readIp(unsigned id) const
+    { return readBit(id, CsrNumber::Setip0); }
+
+    /// Set the value of the interrupt pending bit corresponding to the
+    /// given interrupt id. Caller must check if write is legal.
+    void writeIp(unsigned id, bool flag)
+    { if (id) writeBit(id, CsrNumber::Setip0, flag); }
+
+    /// Return the value of the interrupt enabled bit corresponding to the
+    /// given interrupt id.
+    bool readIe(unsigned id) const
+    { return readBit(id, CsrNumber::Setie0); }
+
+    /// Set the value of the interrupt pending bit corresponding to the
+    /// given interrupt id. Caller must check if write is legal.
+    void writeIe(unsigned id, bool flag)
+    { if (id) writeBit(id, CsrNumber::Setie0, flag); }
+
   private:
 
     uint64_t addr_ = 0;
