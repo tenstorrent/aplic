@@ -663,8 +663,14 @@ Domain::setInterruptEnabled(unsigned id, bool flag)
     }
   else
     {
-      // Deliver using IMSIC
-      assert(0);
+      // Deliver to IMSIC
+      if (interruptEnabled() and memoryWrite_)
+	{
+	  uint64_t imsicAddr = imsicAddress(hart);
+	  uint32_t eiid = target.mbits_.eiid_;
+	  memoryWrite_(imsicAddr, sizeof(eiid), eiid);
+	  writeIp(id, false);  // Clear interrupt pending.
+	}
     }
 
   return true;
@@ -726,31 +732,31 @@ Domain::imsicAddress(unsigned hartIx)
 
   unsigned itemBits = sizeof(CsrValue) * 8;
 
-  uint64_t addr = 0, g = 0, h = 0, guest = 0;
+  uint64_t addr = 0;
 
   auto root = rootDomain();
   Mmsiaddrcfgh cfgh{root->csrAt(CN::Mmsiaddrcfgh).read()};
 
+  uint64_t gg = (hartIx >> cfgh.bits_.lhxw_) & ((1 << cfgh.bits_.hhxw_) - 1);
+  uint64_t hh = hartIx & ((1 << cfgh.bits_.lhxw_) - 1);
+  uint64_t hhxs = cfgh.bits_.hhxs_;
+
   if (isMachinePrivilege())
     {
-      g = (hartIx >> cfgh.bits_.lhxw_) & ((1 << cfgh.bits_.hhxw_) - 1);
-      h = hartIx & ((1 << cfgh.bits_.lhxw_) - 1);
       uint64_t low = root->csrAt(CN::Mmsiaddrcfg).read();
       addr = (uint64_t(cfgh.bits_.ppn_) << itemBits) | low;
-      addr = (addr | (g << (cfgh.bits_.hhxs_ + 12)) | (h << cfgh.bits_.lhxs_)) << 12;
+      addr = (addr | (gg << (hhxs + 12)) | (hh << cfgh.bits_.lhxs_)) << 12;
     }
   else
     {
       CN ntc = advance(CN::Target1, hartIx - 1);
       Target target{root->csrAt(ntc).read()};
-      guest = target.mbits_.guest_;
+      uint64_t guest = target.mbits_.guest_;
 
       Smsiaddrcfgh scfgh{root->csrAt(CN::Smsiaddrcfgh).read()};
-      g = (hartIx >> cfgh.bits_.lhxw_) & ((1 << cfgh.bits_.hhxw_) - 1);
-      h = hartIx & ((1 << cfgh.bits_.lhxw_) - 1);
       uint64_t low = root->csrAt(CN::Smsiaddrcfg).read();
       addr = (uint64_t(scfgh.bits_.ppn_) << itemBits) | low;
-      addr = (addr | (g << (cfgh.bits_.hhxs_ + 12)) | (h << scfgh.bits_.lhxs_) | guest) << 12;
+      addr = (addr | (gg << (hhxs + 12)) | (hh << scfgh.bits_.lhxs_) | guest) << 12;
     }
 
   return addr;
