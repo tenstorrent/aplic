@@ -120,7 +120,7 @@ Domain::write(uint64_t addr, unsigned size, uint64_t value)
 	  trySetIe(value);
 	  return true;
 	}
-      else if (itemIx < uint64_t(CN::Sourcecfg1) or itemIx > uint64_t(CN::Sourcecfg1023))
+      else if (itemIx >= uint64_t(CN::Sourcecfg1) and itemIx < uint64_t(CN::Sourcecfg1023))
 	{
 	  if (isLeaf() and Sourcecfg{val}.bits_.d_)
 	    val = 0;  // Section 4.5.2 of spec: Attempt to set D in a leaf domain
@@ -128,8 +128,7 @@ Domain::write(uint64_t addr, unsigned size, uint64_t value)
 
       csrs_.at(itemIx).write(val);
 
-      // Writing sourcecfg may change a source status. Update enable and pending
-      // bits.
+      // Writing sourcecfg may change a source status. Update enable/pending bits.
       postSourcecfgWrite(itemIx);
 
       return true;
@@ -300,7 +299,6 @@ Domain::postSourcecfgWrite(unsigned csrn)
       setIpWritable(id, not delegated);
     }
 
-  std::cerr << "Evaluate source for interrupt delivery\n";
 }
 
 
@@ -507,21 +505,32 @@ Domain::sourceMode(unsigned id) const
 
 
 bool
-Domain::setInterruptPending(unsigned id, bool flag)
+Domain::setInterruptPending(unsigned id, bool pending)
 {
   if (id == 0 or id > interruptCount_ or isDelegated(id))
     return false;
 
-  using CN = CsrNumber;
-
   bool prev = readIp(id);
-  if (prev == flag)
+  if (prev == pending)
     return true;  // Value did not change.
 
   bool enabled = readIe(id);
 
   // Update interrupt pending bit.
-  writeIp(id, flag);
+  writeIp(id, pending);
+
+  bool ready = enabled and pending;
+  deliverInterrupt(id, ready);
+  return true;
+}
+
+
+/// Deliver/undeliver interrupt of given source to the associated hart. This is called
+/// when a source status changes.
+void
+Domain::deliverInterrupt(unsigned id, bool ready)
+{
+  using CN = CsrNumber;
 
   // Determine interrupt target and priority.
   CN ntc = advance(CN::Target1, id - 1);  // Number of target CSR.
@@ -537,7 +546,7 @@ Domain::setInterruptPending(unsigned id, bool flag)
       auto& idc = idcs_.at(hart);
       IdcTopi topi{idc.topi_};
       unsigned topPrio = topi.bits_.prio_;
-      if (flag and enabled)
+      if (ready)
 	{
 	  if (prio < topPrio or (prio == topPrio and id < topi.bits_.id_))
 	    {
@@ -545,7 +554,7 @@ Domain::setInterruptPending(unsigned id, bool flag)
 	      topi.bits_.id_ = id;
 	    }
 	}
-      else if (id == topi.bits_.id_ and not flag)
+      else if (id == topi.bits_.id_)
 	{
 	  // Interrupt that used to determine our top id went away. Re-compute
 	  // top id and priority in interrupt delivery control.
@@ -584,90 +593,26 @@ Domain::setInterruptPending(unsigned id, bool flag)
 	  writeIp(id, false);  // Clear interrupt pending.
 	}
     }
-
-  return true;
 }
 
 
 bool
-Domain::setInterruptEnabled(unsigned id, bool flag)
+Domain::setInterruptEnabled(unsigned id, bool enabled)
 {
   if (id == 0 or id > interruptCount_ or isDelegated(id))
     return false;
 
-  using CN = CsrNumber;
-
   bool prev = readIe(id);
-  if (prev == flag)
+  if (prev == enabled)
     return true;  // Value did not change.
 
   bool pending = readIp(id);
 
   // Update interrupt enabled bit.
-  writeIe(id, flag);
+  writeIe(id, enabled);
 
-  // Determine interrupt target and priority.
-  CN ntc = advance(CN::Target1, id - 1);  // Number of target CSR.
-  auto targetVal = csrAt(ntc).read();
-  Target target{targetVal};
-  unsigned prio =  target.bits_.prio_;
-  unsigned hart = target.bits_.hart_;
-
-  if (directDelivery())
-    {
-      // Update top priority interrupt. Lower priority number wins.
-      // For tie, lower source id wins
-      auto& idc = idcs_.at(hart);
-      IdcTopi topi{idc.topi_};
-      unsigned topPrio = topi.bits_.prio_;
-      if (flag and pending)
-	{
-	  if (prio <= topPrio or (prio == topPrio and id < topi.bits_.id_))
-	    {
-	      topi.bits_.prio_ = prio;
-	      topi.bits_.id_ = id;
-	    }
-	}
-      else if (id == topi.bits_.id_ and not flag)
-	{
-	  // Interrupt that used to determine our top id went away. Re-compute
-	  // top id and priority in interrupt delivery control.
-	  topi.bits_.prio_ = 0;
-	  topi.bits_.id_ = 0;
-	  for (unsigned iid = 1; iid < interruptCount_; ++iid)
-	    {
-	      CN ntc = advance(CN::Target1, iid - 1);
-	      CsrValue targetVal = csrAt(ntc).read();
-	      Target target{targetVal};
-	      if (target.bits_.hart_ == hart)
-		if (topi.bits_.prio_ == 0 or target.bits_.prio_ < topi.bits_.prio_)
-		  {
-		    topi.bits_.prio_ = target.bits_.prio_;
-		    topi.bits_.id_ = iid;
-		  }
-	    }
-	}
-
-      idc.topi_ = topi.value_;  // Update IDC.
-
-      CsrValue dcfgVal = csrAt(CN::Domaincfg).read();
-      Domaincfg dcfg{dcfgVal};
-      if ((topi.bits_.prio_ < idc.ithreshold_ or idc.ithreshold_ == 0) and
-	  idc.idelivery_ and interruptEnabled() and deliveryFunc_)
-	deliveryFunc_(hart, isMachinePrivilege());
-    }
-  else
-    {
-      // Deliver to IMSIC
-      if (interruptEnabled() and memoryWrite_)
-	{
-	  uint64_t imsicAddr = imsicAddress(hart);
-	  uint32_t eiid = target.mbits_.eiid_;
-	  memoryWrite_(imsicAddr, sizeof(eiid), eiid);
-	  writeIp(id, false);  // Clear interrupt pending.
-	}
-    }
-
+  bool ready = enabled and pending;
+  deliverInterrupt(id, ready);
   return true;
 }
 

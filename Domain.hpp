@@ -471,6 +471,10 @@ namespace TT_APLIC
 
   protected:
 
+    /// Deliver/undeliver interrupt of given source to the associated hart. This
+    /// is called when a source status changes.
+    void deliverInterrupt(unsigned id, bool ready);
+
     /// Add given child to the children of this domain.
     void addChild(std::shared_ptr<Domain> child)
     { children_.push_back(child); }
