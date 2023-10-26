@@ -60,6 +60,9 @@ namespace TT_APLIC
   /// for direct delivery (non message signaled).
   struct Idc
   {
+    // Enum corresponding to the rank of the CsrValue items in this struct.
+    enum class Field : unsigned { Idelivery, Iforce, Ithreshold, Topi, Claimi };
+
     CsrValue idelivery_= 0;
     CsrValue iforce_ = 0;
     CsrValue ithreshold_ = 0;
@@ -489,6 +492,29 @@ namespace TT_APLIC
 
     /// Helper to write method. Write to the interrupt delivery control section.
     bool writeIdc(uint64_t addr, unsigned size, CsrValue value);
+
+    /// Identify the Idc structure and field within the structure corresponding to
+    /// the given address returning pointer to the Idc structure and setting field
+    /// to the index of the field within it. Return nullptr if address is out
+    /// of the Idc structures bound or is unaligned.
+    Idc* findIdc(uint64_t addr, uint64_t& idcIndex, Idc::Field& field)
+    {
+      unsigned fieldSize = sizeof(CsrValue);  // Required size.
+      if ((addr & (fieldSize - 1)) != 0)
+	return nullptr;
+
+      uint64_t ix = (addr - (addr_ + IdcOffset)) / sizeof(Idc);
+      if (ix >= idcs_.size())
+	return nullptr;
+      idcIndex = ix;
+
+      Idc& idc = idcs_.at(idcIndex);
+      size_t idcFieldCount = sizeof(idc) / sizeof(idc.idelivery_);
+      uint64_t itemIx = (addr - (addr_ + IdcOffset)) / fieldSize;
+      unsigned idcFieldIx = itemIx % idcFieldCount;
+      field = Idc::Field{idcFieldIx};
+      return &idc;
+    }
 
     /// Set the interrupt pending bit of the given id. Return true if
     /// successful. Return false if it is not possible to set the bit (see

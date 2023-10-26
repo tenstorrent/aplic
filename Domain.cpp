@@ -147,44 +147,40 @@ Domain::readIdc(uint64_t addr, unsigned size, CsrValue& value)
   if (not directDelivery())
     return false;
 
-  // Check size and alignment.
-  unsigned reqSize = sizeof(CsrValue);  // Required size.
-  if (size != reqSize or (addr & (reqSize - 1)) != 0)
+  // Check size.
+  if (size != sizeof(CsrValue))
     return false;
 
-  uint64_t idcIndex = (addr - (addr_ + IdcOffset)) / sizeof(Idc);
-  if (idcIndex >= idcs_.size())
+  Idc::Field field;
+  uint64_t idcIx = 0;
+  Idc* idc = findIdc(addr, idcIx, field);
+  if (not idc)
     return false;
 
-  Idc& idc = idcs_.at(idcIndex);
-  size_t idcItemCount = sizeof(idc) / sizeof(idc.idelivery_);
-  uint64_t itemIx = (addr - (addr_ + IdcOffset)) / reqSize;
-  size_t idcItemIx = itemIx % idcItemCount;
-
-  switch (idcItemIx)
+  switch (field)
     {
-    case 0  :
-      value = idc.idelivery_;
+    case Idc::Field::Idelivery :
+      value = idc->idelivery_;
       break;
 
-    case 1  :
-      value = idc.iforce_;
+    case Idc::Field::Iforce :
+      value = idc->iforce_;
       break;
 
-    case 2  :
-      value = idc.ithreshold_;
+    case Idc::Field::Ithreshold :
+      value = idc->ithreshold_;
       break;
 
-    case 3  :
-      value = idc.topi_;
-      if (value >= idc.ithreshold_ and idc.ithreshold_ != 0)
+    case Idc::Field::Topi :
+      value = idc->topi_;
+      if (value >= idc->ithreshold_ and idc->ithreshold_ != 0)
 	value = 0;
       break;
 
-    case 4  :
-      value = idc.claimi_;
+    case Idc::Field::Claimi :
+      value = idc->claimi_;
       if (value == 0)
-	idc.iforce_ = 0;
+	idc->iforce_ = 0;
       else
 	tryClearIp(value);
       break;
@@ -203,49 +199,46 @@ Domain::writeIdc(uint64_t addr, unsigned size, CsrValue value)
   if (not directDelivery())
     return false;
 
-  // Check size and alignment.
-  unsigned reqSize = sizeof(CsrValue);  // Required size.
-  if (size != reqSize or (addr & (reqSize - 1)) != 0)
+  // Check size.
+  if (size != sizeof(CsrValue))
     return false;
 
-  uint64_t idcIndex = (addr - (addr_ + IdcOffset)) / sizeof(Idc);
-  if (idcIndex >= idcs_.size())
+  Idc::Field field;
+  uint64_t idcIx = 0;
+  Idc* idc = findIdc(addr, idcIx, field);
+  if (not idc)
     return false;
 
-  Idc& idc = idcs_.at(idcIndex);
-  size_t idcItemCount = sizeof(idc) / sizeof(idc.idelivery_);
-  uint64_t itemIx = (addr - (addr_ + IdcOffset)) / reqSize;
-  size_t idcItemIx = itemIx % idcItemCount;  // Index of field with IDC.
-  switch (idcItemIx)
+  switch (field)
     {
-    case 0  :
-      idc.idelivery_  = value & 1;
+    case Idc::Field::Idelivery :
+      idc->idelivery_  = value & 1;
       break;
 
-    case 1  :
+    case Idc::Field::Iforce :
       {
 	CsrValue dcfgVal = csrAt(CsrNumber::Domaincfg).read();
 	Domaincfg dcfg{dcfgVal};
 
-	idc.iforce_ = value & 1;
-	if (idc.iforce_ and idc.topi_ == 0 and idc.idelivery_ and
+	idc->iforce_ = value & 1;
+	if (idc->iforce_ and idc->topi_ == 0 and idc->idelivery_ and
 	    interruptEnabled() and deliveryFunc_)
-	  deliveryFunc_(idcIndex, isMachinePrivilege());
+	  deliveryFunc_(idcIx, isMachinePrivilege());
       }
       break;
 
-    case 2  :
-      idc.ithreshold_ = value & ((1 << ipriolen_) - 1);
+    case Idc::Field::Ithreshold :
+      idc->ithreshold_ = value & ((1 << ipriolen_) - 1);
       break;
 
-    case 3  :
+    case Idc::Field::Topi :
       break;  // topi is not writable
 
-    case 4  :
+    case Idc::Field::Claimi :
       break;  // claimi is not writable
 
     default :
-      break;
+      break;  // reserved fields are not writable
     }
   return true;
 }
