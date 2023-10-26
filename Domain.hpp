@@ -401,11 +401,11 @@ namespace TT_APLIC
 	(SM(id) == SM::Level0 or SM(id) == SM::Level1);
     }
 
-    /// Define a callback function for the domain to deliver an interrupt to a
-    /// hart. When an interrupt becomes active (ready for delivery), the domain
-    /// will call this function which will presumably set the M/S external
-    /// interrupt pending bit in the MIP CSR of that hart.
-    void setDeliveryMethod(std::function<bool(unsigned hartIx, bool machine)> func)
+    /// Define a callback function for the domain to deliver/undeliver an
+    /// interrupt to a hart. When an interrupt becomes active (ready for
+    /// delivery), the domain will call this function which will presumably set
+    /// the M/S external interrupt pending bit in the MIP CSR of that hart.
+    void setDeliveryMethod(std::function<bool(unsigned hartIx, bool machine, bool ip)> func)
     { deliveryFunc_ = func; }
 
     /// Define a callback function for the domain to write to a memory location.
@@ -671,8 +671,8 @@ namespace TT_APLIC
     std::vector<std::shared_ptr<Domain>> children_;
     std::vector<bool> activeHarts_;  // Hart active in this domain.
 
-    /// Callback to deliver an external interrupt to a hart.
-    std::function<bool(unsigned hartIx, bool machine)> deliveryFunc_ = nullptr;
+    /// Callback to deliver/undeliver an external interrupt to a hart.
+    std::function<bool(unsigned hartIx, bool machine, bool ip)> deliveryFunc_ = nullptr;
 
     std::function<bool(uint64_t addr, unsigned size, uint64_t data)> memoryWrite_ = nullptr;
 

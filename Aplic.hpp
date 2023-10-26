@@ -39,19 +39,18 @@ namespace TT_APLIC
     /// corresponding interrupt becomes pending.
     bool setSourceState(unsigned id, bool state);
 
-    /// Create a domain and make it a child of the given parent. Create a root
-    /// domain if parent is empty. Root domain must be created before all other
-    /// domain and must have machine privilege. A parent domain must be created
-    /// before its child. Return pointer to created domain or nullptr if we fail
-    /// to create a domain.
+    /// Create a domain and make it a child of the given parent. Create a root domain if
+    /// parent is empty. Root domain must be created before all other domain and must have
+    /// machine privilege. A parent domain must be created before its child. Return
+    /// pointer to created domain or nullptr if we fail to create a domain.
     std::shared_ptr<Domain> createDomain(std::shared_ptr<Domain> parent,
 					 uint64_t addr, bool isMachine);
 
-    /// Define a callback function for this Aplic to deliver an interrupt to a
-    /// hart. When an interrupt becomes active (ready for delivery), the Aplic
-    /// will call this function which will presumably set the M/S external
-    /// interrupt pending bit in the MIP CSR of that hart.
-    void setDeliveryMethod(std::function<bool(unsigned hartIx, bool machine)> func)
+    /// Define a callback function for this Aplic to deliver/undeliver an interrupt to a
+    /// hart. When an interrupt becomes active (ready for delivery), the Aplic will call
+    /// this function which will presumably set the M/S external interrupt pending bit in
+    /// the MIP CSR of that hart.
+    void setDeliveryMethod(std::function<bool(unsigned hartIx, bool machine, bool ip)> func)
     {
       deliveryFunc_ = func;
       for (auto domain : regionDomains_)
@@ -97,6 +96,6 @@ namespace TT_APLIC
     std::vector<std::shared_ptr<Domain>> regionDomains_;
 
     /// Callback to deliver an external interrupt to a hart.
-    std::function<bool(unsigned hartIx, bool machine)> deliveryFunc_ = nullptr;
+    std::function<bool(unsigned hartIx, bool machine, bool ip)> deliveryFunc_ = nullptr;
   };
 }
