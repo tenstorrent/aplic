@@ -35,7 +35,7 @@ namespace TT_APLIC
       Clrienum,
       Setipnumle,
       Setipnumbe,
-      Genmsi,
+      Genmsi = 0x3000,
       Target1,
       Target1023 = Target1 + 1022
     };
