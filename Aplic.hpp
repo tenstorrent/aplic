@@ -46,16 +46,28 @@ namespace TT_APLIC
     std::shared_ptr<Domain> createDomain(std::shared_ptr<Domain> parent,
 					 uint64_t addr, bool isMachine);
 
-    /// Define a callback function for this Aplic to deliver/undeliver an interrupt to a
-    /// hart. When an interrupt becomes active (ready for delivery), the Aplic will call
-    /// this function which will presumably set the M/S external interrupt pending bit in
-    /// the MIP CSR of that hart.
+    /// Define a callback function for this Aplic to directly deliver/undeliver an
+    /// interrupt to a hart. When an interrupt becomes active (ready for delivery) or
+    /// inactive, the Aplic will call this function which will should set/clear the M/S
+    /// external interrupt pending bit in the MIP CSR of that hart.
     void setDeliveryMethod(std::function<bool(unsigned hartIx, bool machine, bool ip)> func)
     {
       deliveryFunc_ = func;
       for (auto domain : regionDomains_)
 	if (domain)
 	  domain->setDeliveryMethod(func);
+    }
+
+    /// Define a callback function for this Aplic to write to the IMSIC of a hart. When an
+    /// interrupt becomes active (ready for delivery), the Aplic will call this function
+    /// which should write to an IMIC address to set the M/S external interrupt pending
+    /// bit in the interrupt file of that IMSIC.
+    void setImsicMethod(std::function<bool(uint64_t addr, unsigned size, uint64_t data)> func)
+    {
+      imsicFunc_ = func;
+      for (auto domain : regionDomains_)
+	if (domain)
+	  domain->setImsicMethod(func);
     }
 
   protected:
@@ -95,7 +107,10 @@ namespace TT_APLIC
     // Vector of domains indexed by memory region.
     std::vector<std::shared_ptr<Domain>> regionDomains_;
 
-    /// Callback to deliver an external interrupt to a hart.
+    // Callback for direct interrupt delivery.
     std::function<bool(unsigned hartIx, bool machine, bool ip)> deliveryFunc_ = nullptr;
+
+    // Callback for IMSIC interrupt delivery.
+    std::function<bool(uint64_t addr, unsigned size, uint64_t data)> imsicFunc_ = nullptr;
   };
 }

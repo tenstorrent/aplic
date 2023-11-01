@@ -411,8 +411,8 @@ namespace TT_APLIC
     /// Define a callback function for the domain to write to a memory location.
     /// This is used to deliver interrupts to the IMSIC by writing to the IMSIC
     /// address.
-    void setMemoryWriteMethod(std::function<bool(uint64_t addr, unsigned size, uint64_t value)> func)
-    { memoryWrite_ = func; }
+    void setImsicMethod(std::function<bool(uint64_t addr, unsigned size, uint64_t value)> func)
+    { imsicFunc_ = func; }
 
     /// Return the IMSIC address for the given hart. This is computed from the
     /// MMSIADDRCFG CSRs for machine privilege and from the SMSIADDRCFG CSRS for
@@ -469,6 +469,10 @@ namespace TT_APLIC
     uint64_t claimiAddress(unsigned hart) const
     { return idcAddress(hart) + 4*sizeof(CsrValue); }
 
+    /// Advance a csr number by the given amount (add amount to number).
+    static CsrNumber advance(CsrNumber csrn, int32_t amount)
+    { return CsrNumber(CsrValue(csrn) + amount); }
+
   protected:
 
     /// Deliver/undeliver interrupt of given source to the associated hart. This
@@ -484,10 +488,10 @@ namespace TT_APLIC
     { return csrs_.at(unsigned(CsrNumber::Domaincfg)).read(); }
 
     /// Return the pointer to the root domain.
-    std::shared_ptr<Domain> rootDomain()
+    Domain* rootDomain()
     {
       if (isRoot())
-	return std::shared_ptr<Domain>(this);
+	return this;
       return getParent()->rootDomain();
     }
 
@@ -605,10 +609,6 @@ namespace TT_APLIC
     static CsrNumber advance(CsrNumber csrn, uint32_t amount)
     { return CsrNumber(CsrValue(csrn) + amount); }
 
-    /// Advance a csr number by the given amount (add amount to number).
-    static CsrNumber advance(CsrNumber csrn, int32_t amount)
-    { return CsrNumber(CsrValue(csrn) + amount); }
-
     /// Return the value of the interrupt bit (pending or enabled) corresponding
     /// to the given interrupt id and the given CSR which must be the first
     /// CSR in its sequence (i.e. Setip0 or Setie0)
@@ -671,10 +671,11 @@ namespace TT_APLIC
     std::vector<std::shared_ptr<Domain>> children_;
     std::vector<bool> activeHarts_;  // Hart active in this domain.
 
-    /// Callback to deliver/undeliver an external interrupt to a hart.
+    // Callback for direct interrupt delivery.
     std::function<bool(unsigned hartIx, bool machine, bool ip)> deliveryFunc_ = nullptr;
 
-    std::function<bool(uint64_t addr, unsigned size, uint64_t data)> memoryWrite_ = nullptr;
+    // Callback for IMSIC interrupt delivery.
+    std::function<bool(uint64_t addr, unsigned size, uint64_t data)> imsicFunc_ = nullptr;
 
   };
 

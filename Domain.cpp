@@ -605,11 +605,11 @@ Domain::deliverInterrupt(unsigned id, bool ready)
   else
     {
       // Deliver to IMSIC
-      if (ready and interruptEnabled() and memoryWrite_)
+      if (ready and interruptEnabled() and imsicFunc_)
 	{
 	  uint64_t imsicAddr = imsicAddress(hart);
 	  uint32_t eiid = target.mbits_.eiid_;
-	  memoryWrite_(imsicAddr, sizeof(eiid), eiid);
+	  imsicFunc_(imsicAddr, sizeof(eiid), eiid);
 	  writeIp(id, false);  // Clear interrupt pending.
 	}
     }
