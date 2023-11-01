@@ -53,10 +53,10 @@ code instantiating a supervisor privilege domain at domain slot 1:
 The createDomain method will return a nullptr if the given address is not
 valid or if it is already occupied by another domain.
 
-# Configuring a Domain for direct delivery.
+# Configuring Delivery Mode
 
 A domain is configured by writing to its "domaincfg" CSR. Here's an example
-of configuring the root domain for direct delivery and enabling its interrupts.
+of configuring the root domain for IMSIC delivery and enabling its interrupts.
 
 ```
   // Read the domain config CSR.
@@ -73,5 +73,22 @@ of configuring the root domain for direct delivery and enabling its interrupts.
 ```
 
 The write method requires an address (of a memory mapped register), the
-csrAddress method maps a CSR number ot a memory address.
+csrAddress method maps a CSR number to a memory address.
 
+To configure a docmain for direct interrupt deliver, the DM field of the
+domaincfg CSR is set to 1:
+```
+   dcfg.bits_.dm_ = 1;
+```
+
+# Configuring Interrupt Sources
+
+An interrupt source is configured in a domain by writing to the address
+corresponind to its configuration CSR in that domain.
+```
+  // Configure source interrupt 1 in root domain as delegated to child 0.
+  Sourcecfg cfg1{0};
+  cfg1.bits_.d_ = true;
+  cfg1.bits_.child_ = 0;
+  aplic.write(root->csrAddress(CsrNumber::Sourcecfg1), sizeof(CsrValue), cfg1.value_);
+```
