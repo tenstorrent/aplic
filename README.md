@@ -75,11 +75,14 @@ must be at machine privilege.
 
 ## Instantiating a Child domain
 
-Here we must pass a parent domain to the createDomain method. Here's sample
-code instantiating a supervisor privilege domain at domain slot 1:
+We must pass a parent domain to the createDomain method. Here's sample code
+instantiating a supervisor privilege domain at domain slot 1:
+
 ```
+  isMachine = false;
   auto child = aplic.createDomain(root, addr + 1*stride, isMachine);
 ```
+
 The createDomain method will return a nullptr if the given address is not
 valid or if it is already occupied by another domain.
 
