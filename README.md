@@ -2,7 +2,29 @@ APLIC C++ model
 
 # Introduction
 
-This is a C++ model of the RISCV Advanced Platform Interrupt Controller.
+This is a C++ model of the RISCV Advanced Platform Interrupt Controller. The
+Aplic is a memory mapped device with an address range and a read/write
+interface. The system interacts with the Aplic through the Aplic
+read/write/SetSourceState methods. The system uses the setSourceState method of
+the Aplic to model a change in the interrupt source state of an interrupt. The
+Aplic will evaluate the effects of the setSourceState and, if the required
+conditions are met, it will deliver/underliver an interrupt to a hart in the
+system. The interrupt delivery details are not part of the Aplic code: The Aplic
+relies on a couple of callbacks to effect the delivery. It is up to the code
+instantiating the Aplic to define the callback methods. There is one callback
+for direct (non MSI) interrupt delivery and one for message based (MSI)
+delivery. Here's an overview of the usage mode of the Aplic:
+
+1. Instantiate an Aplic associating it with a memory address, a hart
+count, a domain count, and an interrupt device count.
+2. Define the direct delivery callback or the MSI delivery callback or both.
+3. Invoke the Aplic read method whenever there is a memory read operation targeting
+an address in the address range of the Aplic.
+4. Invoke the APlic write method whenever there is a memory write operation targeting
+an address in the address range of the Aplic.
+5. Invoke the setSourceState method whenever there is a change in the state of
+an interrupt source associated with the Aplic.
+
 
 # Compiling
 You would need a C++ compiler supporting c++20 or later as well as GNU make.
@@ -52,6 +74,7 @@ code instantiating a supervisor privilege domain at domain slot 1:
 ```
 The createDomain method will return a nullptr if the given address is not
 valid or if it is already occupied by another domain.
+
 
 # Configuring Delivery Mode
 
