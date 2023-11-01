@@ -8,21 +8,29 @@ interface. The system interacts with the Aplic through the Aplic
 read/write/SetSourceState methods. The system uses the setSourceState method of
 the Aplic to model a change in the interrupt source state of an interrupt. The
 Aplic will evaluate the effects of the setSourceState and, if the required
-conditions are met, it will deliver/underliver an interrupt to a hart in the
+conditions are met, it will deliver/undeliver an interrupt to a hart in the
 system. The interrupt delivery details are not part of the Aplic code: The Aplic
-relies on a couple of callbacks to effect the delivery. It is up to the code
+relies on a couple of callbacks to perform the delivery. It is up to the code
 instantiating the Aplic to define the callback methods. There is one callback
 for direct (non MSI) interrupt delivery and one for message based (MSI)
 delivery. Here's an overview of the usage mode of the Aplic:
 
-1. Instantiate an Aplic associating it with a memory address, a hart
-count, a domain count, and an interrupt device count.
+1. Instantiate an Aplic associating it with a memory address, a stride (address
+offset between domains), a hart count, a domain count, and an interrupt device
+count.
+
 2. Define the direct delivery callback or the MSI delivery callback or both.
-3. Invoke the Aplic read method whenever there is a memory read operation targeting
+
+3. Define the domains of the Aplic starting with the root domain and associating
+each non-root domain with a parent domain.
+
+4. Invoke the Aplic read method whenever there is a memory read operation targeting
 an address in the address range of the Aplic.
-4. Invoke the APlic write method whenever there is a memory write operation targeting
+
+5. Invoke the Aplic write method whenever there is a memory write operation targeting
 an address in the address range of the Aplic.
-5. Invoke the setSourceState method whenever there is a change in the state of
+
+6. Invoke the setSourceState method whenever there is a change in the state of
 an interrupt source associated with the Aplic.
 
 
@@ -76,7 +84,16 @@ The createDomain method will return a nullptr if the given address is not
 valid or if it is already occupied by another domain.
 
 
-# Configuring Delivery Mode
+# Backdoor Interactions with the Aplic
+
+The system will typically interact with the Aplic through the read, write, and
+setSourceState methods. The read/write methods are usually invoked in support of
+load/store instructions running on the system harts. The setSourceState is
+invoked by asynchronous interrupts coming from IO device models or from an
+interrupt generation module in the test bench. In this section we describe
+backdoor methods to interact with the Aplic.
+
+# Configuring the Domain Delivery Mode
 
 A domain is configured by writing to its "domaincfg" CSR. Here's an example
 of configuring the root domain for IMSIC delivery and enabling its interrupts.
@@ -98,16 +115,16 @@ of configuring the root domain for IMSIC delivery and enabling its interrupts.
 The write method requires an address (of a memory mapped register), the
 csrAddress method maps a CSR number to a memory address.
 
-To configure a docmain for direct interrupt deliver, the DM field of the
+To configure a domain for direct interrupt deliver, the DM field of the
 domaincfg CSR is set to 1:
 ```
    dcfg.bits_.dm_ = 1;
 ```
 
-# Configuring Interrupt Sources
+# Configuring Domain Interrupt Sources
 
 An interrupt source is configured in a domain by writing to the address
-corresponind to its configuration CSR in that domain.
+corresponding to its configuration CSR in that domain.
 ```
   // Configure source interrupt 1 in root domain as delegated to child 0.
   Sourcecfg cfg1{0};
