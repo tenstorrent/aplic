@@ -1,0 +1,7 @@
+*.d
+*.o
+aplic-test
+bazel-*
+
+# VSCode
+.vscode/
