@@ -93,9 +93,10 @@ main(int, char**)
   sourceIx = 2, hart = 1, threshold = 2;
   root->write(root->csrAddress(CsrNumber::Setienum), writeSize, sourceIx);
 
-  // Make source2 target hart 1 with priority 1.
+  // Make source2 target hart 1 with effective interrupt id 7.
   tgt.bits_.hart_ = hart;
-  tgt.bits_.prio_ = 1;
+  tgt.mbits_.eiid_ = 7;
+  
   CsrNumber tgtCsr = Domain::advance(CsrNumber::Target1, 1);
   root->write(root->csrAddress(tgtCsr), sizeof(CsrValue), tgt.value_);
 

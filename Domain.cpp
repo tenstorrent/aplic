@@ -445,8 +445,7 @@ Domain::defineIdcs()
 
 
 bool
-Domain::
-setSourceState(unsigned id, bool state)
+Domain::setSourceState(unsigned id, bool state)
 {
   if (id >= interruptCount_ or id == 0)
     return false;
@@ -467,6 +466,10 @@ setSourceState(unsigned id, bool state)
 
   // Determine value of interrupt pending.
   bool ip = (mode == SourceMode::Edge1 or mode == SourceMode::Level1) == state;
+
+  // Set rectified input value in in_clrip.
+  if (id > 0 and id < interruptCount_)
+    writeBit(id, CsrNumber::Inclrip0, ip);
 
   // Set interrupt pending.
   return setInterruptPending(id, ip);
