@@ -216,7 +216,7 @@ namespace TT_APLIC
 
     struct             // Second variant
     {
-      unsigned eid_  : 11;  // External interrupt id
+      unsigned eiid_ : 11;  // External interrupt id
       unsigned res0_ : 1;
       unsigned busy_ : 1;
       unsigned res1_ : 5;
@@ -430,7 +430,7 @@ namespace TT_APLIC
     /// Return true if delivery mode is direct for this mode. Return false if
     /// delivery mode is through MSI.
     bool directDelivery() const
-    { return domaincfg().bits_.dm_; }
+    { return not domaincfg().bits_.dm_; }
 
     /// Return true if this domain targets machine privilege.
     bool isMachinePrivilege() const

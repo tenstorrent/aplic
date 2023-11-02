@@ -34,6 +34,11 @@ Domain::read(uint64_t addr, unsigned size, uint64_t& value)
 	  if (rootLocked or not isRoot())
 	    val = ix == uint64_t(CN::Mmsiaddrcfgh) ? 0x80000000 : 0;
 	}
+      else if (ix == uint64_t(CN::Genmsi))
+	{
+	  if (directDelivery())
+	    val = 0;
+	}
     }
   else
     ok = readIdc(addr, size, val);
@@ -116,8 +121,7 @@ Domain::write(uint64_t addr, unsigned size, uint64_t value)
 	}
       else if (itemIx == uint64_t(CN::Setienum))
 	{
-	  val = value;
-	  trySetIe(value);
+	  trySetIe(val);
 	  return true;
 	}
       else if (itemIx >= uint64_t(CN::Sourcecfg1) and itemIx <= uint64_t(CN::Sourcecfg1023))
@@ -139,6 +143,16 @@ Domain::write(uint64_t addr, unsigned size, uint64_t value)
 	      if (tgt.bits_.prio_ == 0)
 		tgt.bits_.prio_ = 1;   // Priority bits must not be zero.
 	      val = tgt.value_;
+	    }
+	}
+      else if (itemIx == uint64_t(CN::Genmsi))
+	{
+	  if (not directDelivery() and imsicFunc_)
+	    {
+	      Genmsi genmsi{val};
+	      uint64_t imsicAddr = imsicAddress(genmsi.bits_.hart_);
+	      uint32_t eiid = genmsi.bits_.eiid_;
+	      imsicFunc_(imsicAddr, sizeof(eiid), eiid);
 	    }
 	}
 

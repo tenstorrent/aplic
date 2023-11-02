@@ -22,7 +22,7 @@ main(int, char**)
   uint64_t value = 0;
   root->read(root->csrAddress(CsrNumber::Domaincfg), sizeof(CsrValue), value);
   Domaincfg dcfg{CsrValue(value)};
-  dcfg.bits_.dm_ = 0;
+  dcfg.bits_.dm_ = 1;
   dcfg.bits_.ie_ = 1;
   root->write(root->csrAddress(CsrNumber::Domaincfg), sizeof(CsrValue), dcfg.value_);
 
@@ -51,7 +51,7 @@ main(int, char**)
   value = 0;
   child->read(child->csrAddress(CsrNumber::Domaincfg), sizeof(CsrValue), value);
   dcfg = Domaincfg{CsrValue(value)};
-  dcfg.bits_.dm_ = 1;
+  dcfg.bits_.dm_ = 0;
   dcfg.bits_.ie_ = 1;
   child->write(child->csrAddress(CsrNumber::Domaincfg), sizeof(CsrValue), dcfg.value_);
 
