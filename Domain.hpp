@@ -145,7 +145,9 @@ namespace TT_APLIC
     struct   // Third variant
     {
       unsigned sm_     : 3;  // Source mode
-      unsigned unused_ : 29;
+      unsigned res0_   : 7;
+      unsigned d_      : 1;  // Delegate
+      unsigned res1_   : 22;
     } bits2_;
   };
 
@@ -622,7 +624,7 @@ namespace TT_APLIC
       bool ip = value & bitMask;
       return ip;
     }
-    
+
     /// Set the value of the interrupt pending bit corresponding to the
     /// given interrupt id. Caller must check if write is legal.
     void writeBit(unsigned id, CsrNumber csrn, bool flag)
