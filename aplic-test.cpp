@@ -67,9 +67,9 @@ main(int, char**)
   cfg3.bits_.child_ = 0;
   aplic.write(child2->csrAddress(csrn), sizeof(CsrValue), cfg3.value_);
 
-  // Configure source 3 in child3 domain as Level0 (active low).
+  // Configure source 3 in child3 domain as Edge0 (falling edge).
   cfg3.bits2_.d_ = false;
-  cfg3.bits2_.sm_ = unsigned(SourceMode::Level0);
+  cfg3.bits2_.sm_ = unsigned(SourceMode::Edge0);
   aplic.write(child3->csrAddress(csrn), sizeof(CsrValue), cfg3.value_);
 
   // Configure child domain for direct delivery. Enable interrupt in child domain.
@@ -174,6 +174,9 @@ main(int, char**)
 
   // Set the 2nd source state to high.
   aplic.setSourceState(2, true);
+
+  // Set the 3rd source state to low.
+  aplic.setSourceState(3, false);
 
   // Set the 3rd source state to low.
   aplic.setSourceState(3, false);

@@ -107,6 +107,9 @@ namespace TT_APLIC
     // Vector of domains indexed by memory region.
     std::vector<std::shared_ptr<Domain>> regionDomains_;
 
+    // Current state of interrupt sources
+    std::vector<bool> interruptStates_;
+
     // Callback for direct interrupt delivery.
     std::function<bool(unsigned hartIx, bool machine, bool ip)> deliveryFunc_ = nullptr;
 
