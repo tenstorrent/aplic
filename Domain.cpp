@@ -436,7 +436,7 @@ Domain::defineCsrs()
   reset = 0;
   mask = Genmsi::mask();
   csrAt(CN::Genmsi) = DomainCsr("genmsi", CN::Genmsi, reset, mask);
-  
+
   reset = 0;
   if (directDelivery())
     reset = 1;  // iprio bits in target cannot be zero in direct delivery
@@ -459,14 +459,14 @@ Domain::defineIdcs()
 
 
 bool
-Domain::setSourceState(unsigned id, bool state)
+Domain::setSourceState(unsigned id, bool prev, bool state)
 {
   if (id >= interruptCount_ or id == 0)
     return false;
 
   unsigned childIx = 0;
   if (isDelegated(id, childIx))
-    return children_.at(childIx)->setSourceState(id, state);
+    return children_.at(childIx)->setSourceState(id, prev, state);
 
   // Determine interrupt target and priority.
   using CN = CsrNumber;
@@ -479,7 +479,10 @@ Domain::setSourceState(unsigned id, bool state)
     return true;   // Detached input ignored
 
   // Determine value of interrupt pending.
-  bool ip = (mode == SourceMode::Edge1 or mode == SourceMode::Level1) == state;
+  bool ip =  (mode == SourceMode::Level0) and not state;
+  ip = ip or ((mode == SourceMode::Level1) and state);
+  ip = ip or ((mode == SourceMode::Edge0) and isFalling(prev, state));
+  ip = ip or ((mode == SourceMode::Edge1) and isRising(prev, state));
 
   // Set rectified input value in in_clrip.
   if (id > 0 and id < interruptCount_)

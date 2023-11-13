@@ -375,7 +375,7 @@ namespace TT_APLIC
     bool isDelegated(unsigned id, unsigned& childIx) const;
 
     /// Set the state of the source with the given id.
-    bool setSourceState(unsigned id, bool state);
+    bool setSourceState(unsigned id, bool prev, bool state);
 
     /// Return the source state of the interrupt source with the given id.
     SourceMode sourceMode(unsigned id) const;
@@ -392,7 +392,7 @@ namespace TT_APLIC
     {
       using SM = SourceMode;
       return id != 0 and id < interruptCount_ and not isDelegated(id) and
-	(SM(id) == SM::Edge0 or SM(id) == SM::Level0);
+	(sourceMode(id)== SM::Edge0 or sourceMode(id) == SM::Level0);
     }
 
     /// Return true if interrupt with given id is level sensitive this domain.
@@ -400,8 +400,14 @@ namespace TT_APLIC
     {
       using SM = SourceMode;
       return id != 0 and id < interruptCount_ and not isDelegated(id) and
-	(SM(id) == SM::Level0 or SM(id) == SM::Level1);
+	(sourceMode(id) == SM::Level0 or sourceMode(id) == SM::Level1);
     }
+
+    constexpr bool isFalling(bool prev, bool curr) const
+    { return prev and not curr; }
+
+    constexpr bool isRising(bool prev, bool curr) const
+    { return not prev and curr; }
 
     /// Define a callback function for the domain to deliver/undeliver an
     /// interrupt to a hart. When an interrupt becomes active (ready for
