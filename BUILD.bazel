@@ -1,0 +1,6 @@
+cc_library(
+    name = "Aplic",
+    hdrs = glob(["Aplic.hpp","Domain.hpp"]),
+    srcs = glob(include = ["*.cpp", "*.hpp"],
+    visibility = ["//visibility:public"],
+)
