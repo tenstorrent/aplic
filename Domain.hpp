@@ -409,7 +409,7 @@ namespace TT_APLIC
     constexpr bool isRising(bool prev, bool curr) const
     { return not prev and curr; }
 
-    /// Define a callback function for the domain to deliver/undeliver an
+    /// Define a callback function for the domain to deliver/un-deliver an
     /// interrupt to a hart. When an interrupt becomes active (ready for
     /// delivery), the domain will call this function which will presumably set
     /// the M/S external interrupt pending bit in the MIP CSR of that hart.

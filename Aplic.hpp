@@ -10,7 +10,7 @@
 namespace TT_APLIC
 {
 
-  /// Model an advanced platform local interrupt controlled
+  /// Model an advanced platform local interrupt controller
   class Aplic
   {
   public:
@@ -23,20 +23,19 @@ namespace TT_APLIC
     Aplic(uint64_t addr, uint64_t stride, unsigned hartCount,
 	  unsigned domainCount, unsigned interruptCount);
 
-    /// Read a memory mapped register associated with this Domain. Return true
+    /// Read a memory mapped register associated with this Aplic. Return true
     /// on success. Return false leaving value unmodified if addr is not in the
-    /// range of this Domain or if size/alignment is not valid.
+    /// range of this Aplic or if size/alignment is not valid.
     bool read(uint64_t addr, unsigned size, uint64_t& value);
 
-    /// Write a memory mapped register associated with this Domain. Return true
-    /// on success. Return false if addr is not in the range of this Domain or if
+    /// Write a memory mapped register associated with this Aplic. Return true
+    /// on success. Return false if addr is not in the range of this Aplic or if
     /// size/alignment is not valid.
     bool write(uint64_t addr, unsigned size, uint64_t value);
 
-    /// Set the state of the source of the given id to the given value.  Return
-    /// true on success. Return false if id is out of bounds.  If the the state
-    /// is equal to the state at which the source is active then the
-    /// corresponding interrupt becomes pending.
+    /// Set the state of the source of the given id to the given value. Return true on
+    /// success. Return false if id is out of bounds. If the state is equal to the state
+    /// at which the source is active then the corresponding interrupt becomes pending.
     bool setSourceState(unsigned id, bool state);
 
     /// Create a domain and make it a child of the given parent. Create a root domain if
@@ -46,7 +45,7 @@ namespace TT_APLIC
     std::shared_ptr<Domain> createDomain(std::shared_ptr<Domain> parent,
 					 uint64_t addr, bool isMachine);
 
-    /// Define a callback function for this Aplic to directly deliver/undeliver an
+    /// Define a callback function for this Aplic to directly deliver/un-deliver an
     /// interrupt to a hart. When an interrupt becomes active (ready for delivery) or
     /// inactive, the Aplic will call this function which will should set/clear the M/S
     /// external interrupt pending bit in the MIP CSR of that hart.
