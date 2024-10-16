@@ -8,7 +8,7 @@ interface. The system interacts with the Aplic through the Aplic
 read/write/SetSourceState methods. The system uses the setSourceState method of
 the Aplic to model a change in the interrupt source state of an interrupt. The
 Aplic will evaluate the effects of the setSourceState and, if the required
-conditions are met, it will deliver/undeliver an interrupt to a hart in the
+conditions are met, it will deliver/un-deliver an interrupt to a hart in the
 system. The interrupt delivery details are not part of the Aplic code: The Aplic
 relies on a couple of callbacks to perform the delivery. It is up to the code
 instantiating the Aplic to define the callback methods. There is one callback
@@ -60,7 +60,7 @@ Here's a example:
 
 # Instantiating a Domain
 
-A domain is instnatiated from an Aplic object using the createDomain method. The
+A domain is instantiated from an Aplic object using the createDomain method. The
 root domain must be created first. Child domain must be created after their
 parents are created. A domain is associated with a memory address, a parent
 domain, and a privilege mode. The parent domain of the root domain is the null
@@ -93,8 +93,10 @@ The system will typically interact with the Aplic through the read, write, and
 setSourceState methods. The read/write methods are usually invoked in support of
 load/store instructions running on the system harts. The setSourceState is
 invoked by asynchronous interrupts coming from IO device models or from an
-interrupt generation module in the test bench. In this section we describe
-backdoor methods to interact with the Aplic.
+interrupt generation module in the test bench. It is possible to invoke the
+read/write/setSourceState directly to change the APLIC state independent of
+load/store instructions or IO device state.
+
 
 # Configuring the Domain Delivery Mode
 
