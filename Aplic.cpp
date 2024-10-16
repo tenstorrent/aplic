@@ -73,7 +73,10 @@ Aplic::createDomain(std::shared_ptr<Domain> parent, uint64_t addr, bool isMachin
 {
   if ((addr % stride_) != 0)
     return nullptr;
-
+  
+  if ((size_) == 0)
+    return nullptr;
+    
   unsigned regionIx = 0;
   if (not findRegionByAddr(addr, regionIx))
     return nullptr;    // Addr is out of bounds.
