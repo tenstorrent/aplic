@@ -61,8 +61,8 @@ Here's a example:
 # Instantiating a Domain
 
 A domain is instantiated from an Aplic object using the createDomain method. The
-root domain must be created first. Child domain must be created after their
-parents are created. A domain is associated with a memory address, a parent
+root domain must be created first. A child domain must be created after its
+parent. A domain is associated with a memory address, a parent
 domain, and a privilege mode. The parent domain of the root domain is the null
 pointer. The address must have a value that matches the pattern "addr + n*stride"
 where addr is the address of the Aplic, stride is its stride, and n is an integer
