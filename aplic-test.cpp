@@ -7,6 +7,21 @@ using namespace TT_APLIC;
 int
 main(int, char**)
 {
+  // Define an interrupt delivery callback
+  auto callback = [] (unsigned hartIx, bool mPrivelege, bool interState) -> bool {
+    std::cerr << "Delivering interrup hart=" << hartIx << " privilege="
+	      << (mPrivelege? "machine" : "supervisor")
+	      << " interrupt-state=" << (interState? "on" : "off") << '\n';
+    return true;
+  };
+
+  // Define an IMSIC delivery callback
+  auto imsicFunc = [] (uint64_t addr, unsigned /*size*/, uint64_t data) -> bool {
+    std::cerr << "Imsic write addr=0x" << std::hex << addr << " value="
+	      << data << std::dec << '\n';
+    return true;
+  };
+
   unsigned hartCount = 2;
   unsigned interruptCount = 33;
   unsigned domainCount = 4;
@@ -15,8 +30,26 @@ main(int, char**)
   uint64_t stride = 32*1024;
   Aplic aplic(addr, stride, hartCount, domainCount, interruptCount);
 
+  aplic.setDeliveryMethod(callback);
+  aplic.setImsicMethod(imsicFunc);
+
+  // root
+  //  --> child
+  //  --> child2
+  //    --> child3
+
+  // Create root and child domains.
   bool isMachine = true;
   auto root = aplic.createDomain(nullptr, addr, isMachine);
+
+  isMachine = false;
+  auto child = aplic.createDomain(root, addr + stride, isMachine);
+  isMachine = true;
+  auto child2 = aplic.createDomain(root, addr + 2*stride, isMachine);
+  isMachine = false;
+  auto child3 = aplic.createDomain(child2, addr + 3*stride, isMachine);
+
+  // Aplic creation done. Test APIs.
 
   // Configure root domain for IMSIC delivery. Enable interrupt in root domain.
   uint64_t value = 0;
@@ -25,10 +58,6 @@ main(int, char**)
   dcfg.bits_.dm_ = 1;
   dcfg.bits_.ie_ = 1;
   root->write(root->csrAddress(CsrNumber::Domaincfg), sizeof(CsrValue), dcfg.value_);
-
-
-  isMachine = false;
-  auto child = aplic.createDomain(root, addr + stride, isMachine);
 
   // Configure source 1 in root domain as delegated.
   Sourcecfg cfg1{0};
@@ -46,15 +75,6 @@ main(int, char**)
   cfg2.bits2_.sm_ = unsigned(SourceMode::Level1);
   CsrNumber csrn = Domain::advance(CsrNumber::Sourcecfg1, 1);
   aplic.write(root->csrAddress(csrn), sizeof(CsrValue), cfg2.value_);
-
-  // root
-  //  --> child
-  //  --> child2
-  //    --> child3
-  isMachine = true;
-  auto child2 = aplic.createDomain(root, addr + 2*stride, isMachine);
-  isMachine = false;
-  auto child3 = aplic.createDomain(child2, addr + 3*stride, isMachine);
 
   // Configure source 3 in root domain as delegated.
   Sourcecfg cfg3{0};
@@ -88,25 +108,6 @@ main(int, char**)
   dcfg.bits_.ie_ = 1;
   child3->write(child3->csrAddress(CsrNumber::Domaincfg), sizeof(CsrValue), dcfg.value_);
 
-  // Define an interrupt delivery callback
-  auto callback = [] (unsigned hartIx, bool mPrivelege, bool interState) -> bool {
-    std::cerr << "Delivering interrup hart=" << hartIx << " privilege="
-	      << (mPrivelege? "machine" : "supervisor")
-	      << " interrupt-state=" << (interState? "on" : "off") << '\n';
-    return true;
-  };
-  aplic.setDeliveryMethod(callback);
-
-  // Define an IMSIC delivery callback
-  auto imsicFunc = [] (uint64_t addr, unsigned /*size*/, uint64_t data) -> bool {
-    std::cerr << "Imsic write addr=0x" << std::hex << addr << " value="
-	      << data << std::dec << '\n';
-    return true;
-  };
-  aplic.setImsicMethod(imsicFunc);
-
-
-  // Configuration done. Testing APIs.
   unsigned hart = 0;
 
   // 1. Enable inetrrupt for source 1 in child.

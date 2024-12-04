@@ -98,6 +98,10 @@ Aplic::createDomain(std::shared_ptr<Domain> parent, uint64_t addr, bool isMachin
 
   auto domain = std::make_shared<Domain>(parent, addr, stride_, hartCount_,
 					 interruptCount_, isMachine);
+
+  domain->setImsicMethod(imsicFunc_);
+  domain->setDeliveryMethod(deliveryFunc_);
+
   regionDomains_.at(regionIx) = domain;
   if (not root_)
     root_ = domain;
