@@ -159,6 +159,7 @@ main(int, char**)
   // Smae as: root->write(tgt2Addr, sizeof(CsrValue), tgt.value_);
 
   // 7. Enable idelivery in IDC of hart 1 in root.
+  hart = 1;
   aplic.write(root->ideliveryAddress(hart), sizeof(CsrValue), true);
 
   // 8. Set interrupt threshold in IDC of hart 1.
