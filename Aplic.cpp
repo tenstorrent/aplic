@@ -8,7 +8,7 @@ using namespace TT_APLIC;
 
 Aplic::Aplic(uint64_t addr, uint64_t stride, unsigned hartCount,
 	     unsigned domainCount, unsigned interruptCount)
-  : addr_(addr), stride_(stride), size_(stride*hartCount), hartCount_(hartCount),
+  : addr_(addr), stride_(stride), size_(stride*domainCount), hartCount_(hartCount),
     domainCount_(domainCount), interruptCount_(interruptCount)
 {
   if ((addr & 0xfff) != 0)
