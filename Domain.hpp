@@ -94,7 +94,7 @@ namespace TT_APLIC
   /// Union to pack/unpack the Domaincfg CSR.
   union Domaincfg
   {
-    Domaincfg(CsrValue value)
+    Domaincfg(CsrValue value = 0)
       : value_(value)
     { }
 
@@ -121,7 +121,7 @@ namespace TT_APLIC
   /// Union to pack/unpack the Sourcecfg CSRs
   union Sourcecfg
   {
-    Sourcecfg(CsrValue value)
+    Sourcecfg(CsrValue value = 0)
       : value_(value)
     { }
 
@@ -155,7 +155,7 @@ namespace TT_APLIC
   /// Union to pack/unpack the Mmsiaddrcfgh CSR
   union Mmsiaddrcfgh
   {
-    Mmsiaddrcfgh(CsrValue value)
+    Mmsiaddrcfgh(CsrValue value = 0)
       : value_(value)
     { }
 
@@ -183,7 +183,7 @@ namespace TT_APLIC
   /// Union to pack/unpack the Smsiaddrcfgh CSR
   union Smsiaddrcfgh
   {
-    Smsiaddrcfgh(CsrValue value)
+    Smsiaddrcfgh(CsrValue value = 0)
       : value_(value)
     { }
 
@@ -206,7 +206,7 @@ namespace TT_APLIC
   /// Union to pack/unpack the genmsi CSR
   union Genmsi
   {
-    Genmsi(CsrValue value)
+    Genmsi(CsrValue value = 0)
       : value_(value)
     { }
 
@@ -230,7 +230,7 @@ namespace TT_APLIC
   /// Union to pack/unpack the Target CSRs
   union Target
   {
-    Target(CsrValue value)
+    Target(CsrValue value = 0)
       : value_(value)
     { }
 
