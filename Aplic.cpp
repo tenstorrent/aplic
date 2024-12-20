@@ -69,7 +69,7 @@ Aplic::setSourceState(unsigned id, bool state)
 
 
 std::shared_ptr<Domain>
-Aplic::createDomain(std::shared_ptr<Domain> parent, uint64_t addr, bool isMachine)
+Aplic::createDomain(const std::string& name, std::shared_ptr<Domain> parent, uint64_t addr, bool isMachine)
 {
   if ((addr % stride_) != 0)
     return nullptr;
@@ -99,7 +99,7 @@ Aplic::createDomain(std::shared_ptr<Domain> parent, uint64_t addr, bool isMachin
   if (root_ and not parent)
     return nullptr;   // Cannot have more than one root.
 
-  auto domain = std::make_shared<Domain>(parent, addr, stride_, hartCount_,
+  auto domain = std::make_shared<Domain>(name, parent, addr, stride_, hartCount_,
 					 interruptCount_, isMachine);
 
   domain->setImsicMethod(imsicFunc_);

@@ -334,9 +334,9 @@ namespace TT_APLIC
     /// Constructor. Interrupt count is one plus the largest supported interrupt
     /// id and must be less than ore equal to EndId. Size is the number of bytes
     /// occupied by this domain in the memory address space.
-    Domain(std::shared_ptr<Domain> parent, uint64_t addr, uint64_t size,
+    Domain(const std::string& name, std::shared_ptr<Domain> parent, uint64_t addr, uint64_t size,
 	   unsigned hartCount, unsigned interruptCount, bool isMachine)
-      : addr_(addr), size_(size), hartCount_(hartCount),
+      : name_(name), addr_(addr), size_(size), hartCount_(hartCount),
 	interruptCount_(interruptCount), parent_(parent),
 	isMachine_(isMachine)
     {
@@ -671,6 +671,7 @@ namespace TT_APLIC
 
   private:
 
+    std::string name_;
     uint64_t addr_ = 0;
     uint64_t size_ = 0;
     unsigned hartCount_ = 0;

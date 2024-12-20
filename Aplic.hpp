@@ -42,7 +42,7 @@ namespace TT_APLIC
     /// parent is empty. Root domain must be created before all other domain and must have
     /// machine privilege. A parent domain must be created before its child. Return
     /// pointer to created domain or nullptr if we fail to create a domain.
-    std::shared_ptr<Domain> createDomain(std::shared_ptr<Domain> parent,
+    std::shared_ptr<Domain> createDomain(const std::string& name, std::shared_ptr<Domain> parent,
 					 uint64_t addr, bool isMachine);
 
     /// Define a callback function for this Aplic to directly deliver/un-deliver an
