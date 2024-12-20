@@ -96,6 +96,9 @@ Aplic::createDomain(std::shared_ptr<Domain> parent, uint64_t addr, bool isMachin
   if (not isMachine and not parent->isMachinePrivilege())
     return nullptr;   // Supervisor parent must be machine.
 
+  if (root_ and not parent)
+    return nullptr;   // Cannot have more than one root.
+
   auto domain = std::make_shared<Domain>(parent, addr, stride_, hartCount_,
 					 interruptCount_, isMachine);
 
