@@ -69,6 +69,11 @@ namespace TT_APLIC
 	  domain->setImsicMethod(func);
     }
 
+    bool contains_addr(uint64_t addr)
+    {
+      return addr >= addr_ and addr < addr_ + size_;
+    }
+
   protected:
 
     /// Return a pointer to the domain covering the given address. Return
