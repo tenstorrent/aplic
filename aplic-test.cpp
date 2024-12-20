@@ -8,9 +8,9 @@ int
 main(int, char**)
 {
   // Define an interrupt delivery callback
-  auto callback = [] (unsigned hartIx, bool mPrivelege, bool interState) -> bool {
-    std::cerr << "Delivering interrup hart=" << hartIx << " privilege="
-	      << (mPrivelege? "machine" : "supervisor")
+  auto callback = [] (unsigned hartIx, bool mPrivilege, bool interState) -> bool {
+    std::cerr << "Delivering interrupt hart=" << hartIx << " privilege="
+	      << (mPrivilege? "machine" : "supervisor")
 	      << " interrupt-state=" << (interState? "on" : "off") << '\n';
     return true;
   };
