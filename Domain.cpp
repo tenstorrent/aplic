@@ -14,7 +14,7 @@ Domain::read(uint64_t addr, unsigned size, uint64_t& value)
   if (size != reqSize or (addr & (reqSize - 1)) != 0)
     return false;
 
-  if (addr < addr_ or addr - addr_ >= size)
+  if (addr < addr_ or addr - addr_ >= size_)
     return false;
 
   CsrValue val = 0;
