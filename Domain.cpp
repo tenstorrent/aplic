@@ -227,11 +227,15 @@ Domain::readIdc(uint64_t addr, unsigned size, CsrValue& value)
       break;
 
     case Idc::Field::Claimi :
-      value = idc->claimi_;
-      if (value == 0)
-	idc->iforce_ = 0;
+      readIdc(addr-4, size, value); // claimi has same value as topi
+      id = (value >> 16) & 0x3ff;
+      if (id == 0)
+        {
+          idc->iforce_ = 0;
+	  deliveryFunc_(idcIx, isMachinePrivilege(), false);
+        }
       else
-	tryClearIp(value);
+	tryClearIp(id);
       break;
 
     default :
