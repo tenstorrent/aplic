@@ -17,25 +17,25 @@ namespace TT_APLIC
       Domaincfg,
       Sourcecfg1,
       Sourcecfg1023 = Sourcecfg1 + 1022,
-      Mmsiaddrcfg,
+      Mmsiaddrcfg = 0x1bc0 >> 2,
       Mmsiaddrcfgh,
       Smsiaddrcfg,
       Smsiaddrcfgh,
-      Setip0,
+      Setip0 = 0x1c00 >> 2,
       Setip31 = Setip0 + 31,
-      Setipnum,
-      Inclrip0,
+      Setipnum = 0x1cdc >> 2,
+      Inclrip0 = 0x1d00 >> 2,
       Inclrip31 = Inclrip0 + 31,
-      Clripnum,
-      Setie0,
+      Clripnum = 0x1ddc >> 2,
+      Setie0 = 0x1e00 >> 2,
       Setie31 = Setie0 + 31,
-      Setienum,
-      Clrie0,
+      Setienum = 0x1edc >> 2,
+      Clrie0 = 0x1f00 >> 2,
       Clrie31 = Clrie0 + 31,
-      Clrienum,
-      Setipnumle,
+      Clrienum = 0x1fdc >> 2,
+      Setipnumle = 0x2000 >> 2,
       Setipnumbe,
-      Genmsi = 0xc00,  // = 0x3000 / 4
+      Genmsi = 0x3000 >> 2,
       Target1,
       Target1023 = Target1 + 1022
     };
@@ -61,7 +61,7 @@ namespace TT_APLIC
   struct Idc
   {
     // Enum corresponding to the rank of the CsrValue items in this struct.
-    enum class Field : unsigned { Idelivery, Iforce, Ithreshold, Topi, Claimi };
+    enum class Field : unsigned { Idelivery, Iforce, Ithreshold, Topi=6, Claimi=7 };
 
     CsrValue idelivery_= 0;
     CsrValue iforce_ = 0;
