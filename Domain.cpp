@@ -271,7 +271,10 @@ Domain::writeIdc(uint64_t addr, unsigned size, CsrValue value)
     case Idc::Field::Iforce :
       {
 	idc->iforce_ = value & 1;
-	if (idc->iforce_ and idc->topi_ == 0 and idc->idelivery_ and
+        // TODO(paul): what if topi is not 0?
+        CsrValue topi;
+        readIdc(topiAddress(idcIx), sizeof(CsrValue), topi);
+	if (idc->iforce_ and topi == 0 and idc->idelivery_ and
 	    interruptEnabled() and deliveryFunc_)
 	  deliveryFunc_(idcIx, isMachinePrivilege(), true);
       }
