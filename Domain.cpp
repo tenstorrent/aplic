@@ -270,9 +270,6 @@ Domain::writeIdc(uint64_t addr, unsigned size, CsrValue value)
 
     case Idc::Field::Iforce :
       {
-	CsrValue dcfgVal = csrAt(CsrNumber::Domaincfg).read();
-	Domaincfg dcfg{dcfgVal};
-
 	idc->iforce_ = value & 1;
 	if (idc->iforce_ and idc->topi_ == 0 and idc->idelivery_ and
 	    interruptEnabled() and deliveryFunc_)
@@ -640,8 +637,6 @@ Domain::deliverInterrupt(unsigned id, bool ready)
 
       if (topi.bits_.id_)
 	{
-	  CsrValue dcfgVal = csrAt(CN::Domaincfg).read();
-	  Domaincfg dcfg{dcfgVal};
 	  if ((topi.bits_.prio_ < idc.ithreshold_ or idc.ithreshold_ == 0) and
 	      idc.idelivery_ and interruptEnabled() and deliveryFunc_)
 	    deliveryFunc_(hart, isMachinePrivilege(), true);
