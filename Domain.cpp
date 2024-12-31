@@ -119,9 +119,30 @@ Domain::write(uint64_t addr, unsigned size, uint64_t value)
 	  trySetIp(value);
 	  return true;
 	}
+      else if (itemIx >= uint64_t(CN::Setie0) and itemIx <= uint64_t(CN::Setie31))
+        {
+          unsigned id = (itemIx - uint64_t(CN::Setie0)) * bitsPerItem;
+          for (unsigned bitIx = 0; bitIx < bitsPerItem; bitIx++)
+            if ((val >> bitIx) & 1)
+              trySetIe(id + bitIx);
+          return true;
+        }
       else if (itemIx == uint64_t(CN::Setienum))
 	{
 	  trySetIe(val);
+	  return true;
+	}
+      else if (itemIx >= uint64_t(CN::Clrie0) and itemIx <= uint64_t(CN::Clrie31))
+        {
+          unsigned id0 = (itemIx - uint64_t(CN::Clrie0)) * bitsPerItem;
+          for (unsigned bitIx = 0; bitIx < bitsPerItem; bitIx++)
+            if ((val >> bitIx) & 1)
+              tryClearIe(id0 + bitIx);
+          return true;
+        }
+      else if (itemIx == uint64_t(CN::Clrienum))
+	{
+	  tryClearIe(val);
 	  return true;
 	}
       else if (itemIx >= uint64_t(CN::Sourcecfg1) and itemIx <= uint64_t(CN::Sourcecfg1023))
