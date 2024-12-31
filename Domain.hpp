@@ -67,8 +67,6 @@ namespace TT_APLIC
     CsrValue iforce_ = 0;
     CsrValue ithreshold_ = 0;
     CsrValue topi_ = 0;
-    CsrValue claimi_ = 0;
-    CsrValue reserved_[3] = { 0, 0, 0 };
   };
 
 
@@ -346,7 +344,7 @@ namespace TT_APLIC
       assert(hartCount <= EndHart);
       assert((addr % Align) == 0);  // Address must be a aligned.
       assert((size % Align) == 0);  // Size must be a multiple of alignment.
-      assert(size >= IdcOffset + hartCount * sizeof(Idc));
+      assert(size >= IdcOffset + hartCount * 32);
     }
 
     /// Read a memory mapped register associated with this Domain. Return true
@@ -455,7 +453,7 @@ namespace TT_APLIC
 
     /// Return the memory address of the IDC structure corresponding to the given hart.
     uint64_t idcAddress(unsigned hart) const
-    { return addr_ + IdcOffset + hart*sizeof(Idc); }
+    { return addr_ + IdcOffset + hart*32; }
 
     /// Return the memory address of the idelivery field of the IDC structure
     /// corresponding to the given hart.
@@ -524,7 +522,7 @@ namespace TT_APLIC
       if ((addr & (fieldSize - 1)) != 0)
 	return nullptr;
 
-      uint64_t ix = (addr - (addr_ + IdcOffset)) / sizeof(Idc);
+      uint64_t ix = (addr - (addr_ + IdcOffset)) / 32;
       if (ix >= idcs_.size())
 	return nullptr;
       idcIndex = ix;
