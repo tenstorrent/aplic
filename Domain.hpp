@@ -473,12 +473,12 @@ namespace TT_APLIC
     /// Return the memory address of the topi field of the IDC structure
     /// corresponding to the given hart.
     uint64_t topiAddress(unsigned hart) const
-    { return idcAddress(hart) + 3*sizeof(CsrValue); }
+    { return idcAddress(hart) + 6*sizeof(CsrValue); }
 
     /// Return the memory address of the claimi field of the IDC structure
     /// corresponding to the given hart.
     uint64_t claimiAddress(unsigned hart) const
-    { return idcAddress(hart) + 4*sizeof(CsrValue); }
+    { return idcAddress(hart) + 7*sizeof(CsrValue); }
 
     /// Advance a csr number by the given amount (add amount to number).
     static CsrNumber advance(CsrNumber csrn, int32_t amount)
