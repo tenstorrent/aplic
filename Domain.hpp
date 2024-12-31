@@ -625,8 +625,8 @@ namespace TT_APLIC
     /// CSR in its sequence (i.e. Setip0 or Setie0)
     bool readBit(unsigned id, CsrNumber csrn) const
     {
-      auto cn = advance(csrn, id);
       unsigned bitsPerItem = sizeof(CsrValue) * 8;
+      auto cn = advance(csrn, id/bitsPerItem);
       unsigned bitIx = id % bitsPerItem;
       CsrValue bitMask = CsrValue(1) << bitIx;
       CsrValue value = csrs_.at(unsigned(cn)).read();
@@ -634,12 +634,14 @@ namespace TT_APLIC
       return ip;
     }
 
-    /// Set the value of the interrupt pending bit corresponding to the
-    /// given interrupt id. Caller must check if write is legal.
+    /// Set the value of the interrupt bit (pending or enabled) corresponding
+    /// to the given interrupt id and the given CSR which must be the first CSR
+    /// in its sequence (i.e. Setip0 or Setie0). Caller must check if write is
+    /// legal.
     void writeBit(unsigned id, CsrNumber csrn, bool flag)
     {
-      auto cn = advance(csrn, id);
       unsigned bitsPerItem = sizeof(CsrValue) * 8;
+      auto cn = advance(csrn, id/bitsPerItem);
       unsigned bitIx = id % bitsPerItem;
       CsrValue bitMask = CsrValue(1) << bitIx;
       CsrValue value = csrs_.at(unsigned(cn)).read();
@@ -662,7 +664,7 @@ namespace TT_APLIC
     bool readIe(unsigned id) const
     { return readBit(id, CsrNumber::Setie0); }
 
-    /// Set the value of the interrupt pending bit corresponding to the
+    /// Set the value of the interrupt enabled bit corresponding to the
     /// given interrupt id. Caller must check if write is legal.
     void writeIe(unsigned id, bool flag)
     { if (id) writeBit(id, CsrNumber::Setie0, flag); }
