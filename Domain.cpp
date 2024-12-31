@@ -204,6 +204,7 @@ Domain::readIdc(uint64_t addr, unsigned size, CsrValue& value)
   if (not idc)
     return false;
 
+  unsigned id;
   switch (field)
     {
     case Idc::Field::Idelivery :
@@ -220,7 +221,8 @@ Domain::readIdc(uint64_t addr, unsigned size, CsrValue& value)
 
     case Idc::Field::Topi :
       value = idc->topi_;
-      if (value >= idc->ithreshold_ and idc->ithreshold_ != 0)
+      id = (value >> 16) & 0x3ff;
+      if (id >= idc->ithreshold_ and idc->ithreshold_ != 0)
 	value = 0;
       break;
 
