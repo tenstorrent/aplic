@@ -443,17 +443,19 @@ Domain::defineCsrs()
 	  // Interrupt count is not a multiple of bitsPerItem. Clear
 	  // upper part of item.
 	  unsigned count = bitsPerItem - (interruptCount_ % bitsPerItem);
-	  mask = ((~mask) << count) >> count;
+	  mask = (allOnes << count) >> count;
+      if (ix == 0)
+          mask &= ~1;
 	}
 
       CN cn = advance(CN::Setip0, ix);
-      csrAt(cn).setMask(0);
+      csrAt(cn).setMask(mask);
       cn = advance(CN::Inclrip0, ix);
-      csrAt(cn).setMask(0);
+      csrAt(cn).setMask(mask);
       cn = advance(CN::Setie0, ix);
-      csrAt(cn).setMask(0);
+      csrAt(cn).setMask(mask);
       cn = advance(CN::Clrie0, ix);
-      csrAt(cn).setMask(0);
+      csrAt(cn).setMask(mask);
     }
 
   reset = 0;
