@@ -528,7 +528,7 @@ namespace TT_APLIC
       idcIndex = ix;
 
       Idc& idc = idcs_.at(idcIndex);
-      size_t idcFieldCount = sizeof(idc) / sizeof(idc.idelivery_);
+      size_t idcFieldCount = 32 / sizeof(idc.idelivery_);
       uint64_t itemIx = (addr - (addr_ + IdcOffset)) / fieldSize;
       unsigned idcFieldIx = itemIx % idcFieldCount;
       field = Idc::Field{idcFieldIx};
