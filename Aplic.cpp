@@ -22,7 +22,7 @@ Aplic::Aplic(uint64_t addr, uint64_t stride, unsigned hartCount,
     throw std::runtime_error("Invalid aplic stride -- too small for given hart count");
 
   regionDomains_.resize(domainCount);
-  interruptStates_.resize(interruptCount);
+  interruptStates_.resize(interruptCount+1);
 }
 
 
@@ -57,7 +57,7 @@ Aplic::write(uint64_t addr, unsigned size, uint64_t value)
 bool
 Aplic::setSourceState(unsigned id, bool state)
 {
-  if (id == 0 or id >= interruptCount_ or not root_)
+  if (id == 0 or id > interruptCount_ or not root_)
     return false;
 
   bool prev = interruptStates_.at(id);

@@ -15,8 +15,8 @@ namespace TT_APLIC
   {
   public:
 
-    /// Constructor. Interrupt count is one plus the largest supported interrupt
-    /// id and must be less than ore equal to 1024. Stride is the offset in bytes
+    /// Constructor. interruptCount is the largest supported interrupt id and
+    /// must be less than or equal to 1023. Stride is the offset in bytes
     /// between the starting address of two consecutive domains. The address
     /// space region occupied by this Aplic has a size of n = domainCount *
     /// stride and occupies the addresses addr to addr + n - 1.

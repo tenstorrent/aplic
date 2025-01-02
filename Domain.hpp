@@ -322,15 +322,15 @@ namespace TT_APLIC
     friend class Aplic;
 
     /// Aplic domain constants.
-    enum { IdcOffset = 0x4000, EndId = 1024, EndHart = 16384, Align = 16*1024,
+    enum { IdcOffset = 0x4000, MaxId = 1023, MaxHart = 16384, Align = 16*1024,
 	   MaxIpriolen = 8 };
 
     /// Default constructor.
     Domain()
     { }
 
-    /// Constructor. Interrupt count is one plus the largest supported interrupt
-    /// id and must be less than ore equal to EndId. Size is the number of bytes
+    /// Constructor. interruptCount is the largest supported interrupt id and
+    /// must be less than or equal to 1023. Size is the number of bytes
     /// occupied by this domain in the memory address space.
     Domain(const std::string& name, std::shared_ptr<Domain> parent, uint64_t addr, uint64_t size,
 	   unsigned hartCount, unsigned interruptCount, bool isMachine)
@@ -340,8 +340,8 @@ namespace TT_APLIC
     {
       defineCsrs();
       defineIdcs();
-      assert(interruptCount <= EndId);
-      assert(hartCount <= EndHart);
+      assert(interruptCount <= MaxId);
+      assert(hartCount <= MaxHart);
       assert((addr % Align) == 0);  // Address must be a aligned.
       assert((size % Align) == 0);  // Size must be a multiple of alignment.
       assert(size >= IdcOffset + hartCount * 32);
@@ -386,7 +386,7 @@ namespace TT_APLIC
     /// Return true if interrupt with given id is active (enabled) in this
     /// domain.
     bool isActive(unsigned id) const
-    { return id != 0 and id < interruptCount_ and not isDelegated(id) and
+    { return id != 0 and id <= interruptCount_ and not isDelegated(id) and
 	sourceMode(id) != SourceMode::Inactive; }
 
     /// Return true if interrupt with given id is inverted in this domain
@@ -394,7 +394,7 @@ namespace TT_APLIC
     bool isInverted(unsigned id) const
     {
       using SM = SourceMode;
-      return id != 0 and id < interruptCount_ and not isDelegated(id) and
+      return id != 0 and id <= interruptCount_ and not isDelegated(id) and
 	(sourceMode(id)== SM::Edge0 or sourceMode(id) == SM::Level0);
     }
 
@@ -402,7 +402,7 @@ namespace TT_APLIC
     bool isLevelSensitive(unsigned id) const
     {
       using SM = SourceMode;
-      return id != 0 and id < interruptCount_ and not isDelegated(id) and
+      return id != 0 and id <= interruptCount_ and not isDelegated(id) and
 	(sourceMode(id) == SM::Level0 or sourceMode(id) == SM::Level1);
     }
 
@@ -596,7 +596,7 @@ namespace TT_APLIC
     /// set of CSRs when given flag is true/false.
     void makeWritable(unsigned id, CsrNumber csrn, bool flag)
     {
-      if (id == 0 or id >= interruptCount_)
+      if (id == 0 or id > interruptCount_)
 	return;
       CsrNumber cn = advance(csrn, id);
       unsigned bitsPerValue = sizeof(CsrValue)*8;

@@ -371,9 +371,9 @@ Domain::defineCsrs()
 
   reset = 0;
   std::string base = "sourcecfg";
-  for (unsigned ix = 1; ix < EndId; ++ix)
+  for (unsigned ix = 1; ix <= MaxId; ++ix)
     {
-      if (ix >= interruptCount_)
+      if (ix > interruptCount_)
 	mask = 0;
       else
 	mask = isRoot() ? Sourcecfg::nonDelegatedMask() : 0;
@@ -434,15 +434,15 @@ Domain::defineCsrs()
 
   // Clear mask bits corresponding to non-implemented sources.
   unsigned bitsPerItem = sizeof(CsrValue)*8;
-  unsigned missingIx = (interruptCount_) / bitsPerItem;
+  unsigned missingIx = (interruptCount_+1) / bitsPerItem;
   for (unsigned ix = missingIx; ix <= 31; ++ix)
     {
       mask = 0;
-      if (ix * bitsPerItem < interruptCount_)
+      if (ix * bitsPerItem <= interruptCount_)
 	{
 	  // Interrupt count is not a multiple of bitsPerItem. Clear
 	  // upper part of item.
-	  unsigned count = bitsPerItem - (interruptCount_ % bitsPerItem);
+	  unsigned count = bitsPerItem - ((interruptCount_+1) % bitsPerItem);
 	  mask = (allOnes << count) >> count;
       if (ix == 0)
           mask &= ~1;
@@ -470,9 +470,9 @@ Domain::defineCsrs()
   if (directDelivery())
     reset = 1;  // iprio bits in target cannot be zero in direct delivery
   base = "target";
-  for (unsigned ix = 1; ix < EndId; ++ix)
+  for (unsigned ix = 1; ix <= MaxId; ++ix)
     {
-      mask = ix < interruptCount_ ? Target::mask() : 0;
+      mask = ix <= interruptCount_ ? Target::mask() : 0;
       std::string name = base + std::to_string(ix);
       CN cn = advance(CN::Target1, ix - 1);
       csrAt(cn) = DomainCsr(name, cn, reset, mask);
@@ -490,7 +490,7 @@ Domain::defineIdcs()
 bool
 Domain::setSourceState(unsigned id, bool prev, bool state)
 {
-  if (id >= interruptCount_ or id == 0)
+  if (id > interruptCount_ or id == 0)
     return false;
 
   unsigned childIx = 0;
@@ -514,7 +514,7 @@ Domain::setSourceState(unsigned id, bool prev, bool state)
   ip = ip or ((mode == SourceMode::Edge1) and isRising(prev, state));
 
   // Set rectified input value in in_clrip.
-  if (id > 0 and id < interruptCount_)
+  if (id > 0 and id <= interruptCount_)
     writeBit(id, CsrNumber::Inclrip0, ip);
 
   // Set interrupt pending.
@@ -525,7 +525,7 @@ Domain::setSourceState(unsigned id, bool prev, bool state)
 bool
 Domain::isDelegated(unsigned id) const
 {
-  if (id >= interruptCount_ or id == 0)
+  if (id > interruptCount_ or id == 0)
     return false;
 
   using CN = CsrNumber;
@@ -540,7 +540,7 @@ Domain::isDelegated(unsigned id) const
 bool
 Domain::isDelegated(unsigned id, unsigned& childIx) const
 {
-  if (id >= interruptCount_ or id == 0)
+  if (id > interruptCount_ or id == 0)
     return false;
 
   using CN = CsrNumber;
@@ -556,7 +556,7 @@ Domain::isDelegated(unsigned id, unsigned& childIx) const
 SourceMode
 Domain::sourceMode(unsigned id) const
 {
-  if (id == 0 or id >= interruptCount_ or isDelegated(id))
+  if (id == 0 or id > interruptCount_ or isDelegated(id))
     return SourceMode::Inactive;
 
   using CN = CsrNumber;
@@ -570,7 +570,7 @@ Domain::sourceMode(unsigned id) const
 bool
 Domain::setInterruptPending(unsigned id, bool pending)
 {
-  if (id == 0 or id >= interruptCount_ or isDelegated(id))
+  if (id == 0 or id > interruptCount_ or isDelegated(id))
     return false;
 
   bool prev = readIp(id);
@@ -623,7 +623,7 @@ Domain::deliverInterrupt(unsigned id, bool ready)
 	  // top id and priority in interrupt delivery control.
 	  topi.bits_.prio_ = 0;
 	  topi.bits_.id_ = 0;
-	  for (unsigned iid = 1; iid < interruptCount_; ++iid)
+	  for (unsigned iid = 1; iid <= interruptCount_; ++iid)
 	    {
 	      CN ntc = advance(CN::Target1, iid - 1);
 	      CsrValue targetVal = csrAt(ntc).read();
@@ -666,7 +666,7 @@ Domain::deliverInterrupt(unsigned id, bool ready)
 bool
 Domain::setInterruptEnabled(unsigned id, bool enabled)
 {
-  if (id == 0 or id >= interruptCount_ or isDelegated(id))
+  if (id == 0 or id > interruptCount_ or isDelegated(id))
     return false;
 
   bool prev = readIe(id);
