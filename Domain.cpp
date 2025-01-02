@@ -568,7 +568,7 @@ Domain::sourceMode(unsigned id) const
 bool
 Domain::setInterruptPending(unsigned id, bool pending)
 {
-  if (id == 0 or id > interruptCount_ or isDelegated(id))
+  if (id == 0 or id >= interruptCount_ or isDelegated(id))
     return false;
 
   bool prev = readIp(id);
@@ -664,7 +664,7 @@ Domain::deliverInterrupt(unsigned id, bool ready)
 bool
 Domain::setInterruptEnabled(unsigned id, bool enabled)
 {
-  if (id == 0 or id > interruptCount_ or isDelegated(id))
+  if (id == 0 or id >= interruptCount_ or isDelegated(id))
     return false;
 
   bool prev = readIe(id);
