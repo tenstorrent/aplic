@@ -444,8 +444,8 @@ Domain::defineCsrs()
           // upper part of item.
           unsigned count = bitsPerItem - ((interruptCount_+1) % bitsPerItem);
           mask = (allOnes << count) >> count;
-      if (ix == 0)
-          mask &= ~1;
+          if (ix == 0)
+            mask &= ~1;
         }
 
       CN cn = advance(CN::Setip0, ix);

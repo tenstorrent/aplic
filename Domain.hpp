@@ -297,10 +297,9 @@ namespace TT_APLIC
     void setMask(CsrValue m)
     { mask_ = m; }
 
-      /// Set reset .
+    /// Set reset.
     void reset(CsrValue reset)
-    { reset_ = reset;
-     }
+    { reset_ = reset; }
 
   protected:
 
