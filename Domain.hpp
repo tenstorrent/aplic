@@ -427,7 +427,7 @@ namespace TT_APLIC
     /// Return the IMSIC address for the given hart. This is computed from the
     /// MMSIADDRCFG CSRs for machine privilege and from the SMSIADDRCFG CSRS for
     /// supervisor privilege domains. See section 4.9.1 of the riscv spec.
-    uint64_t imsicAddress(unsigned hartIx);
+    uint64_t imsicAddress(unsigned hartIx, unsigned guestIx);
 
     /// Return true if this domain is in big-endian configuration.
     bool bigEndian() const

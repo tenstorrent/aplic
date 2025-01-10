@@ -171,7 +171,7 @@ Domain::write(uint64_t addr, unsigned size, uint64_t value)
           if (not directDelivery() and imsicFunc_)
             {
               Genmsi genmsi{val};
-              uint64_t imsicAddr = imsicAddress(genmsi.bits_.hart_);
+              uint64_t imsicAddr = imsicAddress(genmsi.bits_.hart_, 0);
               uint32_t eiid = genmsi.bits_.eiid_;
               imsicFunc_(imsicAddr, sizeof(eiid), eiid);
             }
@@ -595,15 +595,15 @@ Domain::deliverInterrupt(unsigned id, bool ready)
 {
   using CN = CsrNumber;
 
-  // Determine interrupt target and priority.
   CN ntc = advance(CN::Target1, id - 1);  // Number of target CSR.
   auto targetVal = csrAt(ntc).read();
   Target target{targetVal};
-  unsigned prio =  target.bits_.prio_;
-  unsigned hart = target.bits_.hart_;
 
   if (directDelivery())
     {
+      unsigned prio = target.bits_.prio_;
+      unsigned hart = target.bits_.hart_;
+
       // Update top priority interrupt. Lower priority number wins.
       // For tie, lower source id wins
       auto& idc = idcs_.at(hart);
@@ -654,9 +654,8 @@ Domain::deliverInterrupt(unsigned id, bool ready)
       // Deliver to IMSIC
       if (ready and interruptEnabled() and imsicFunc_)
         {
-          uint64_t imsicAddr = imsicAddress(hart);
-          uint32_t eiid = target.mbits_.eiid_;
-          imsicFunc_(imsicAddr, sizeof(eiid), eiid);
+          uint64_t imsicAddr = imsicAddress(target.mbits_.mhart_, target.mbits_.guest_);
+          imsicFunc_(imsicAddr, 4, target.mbits_.eiid_);
           writeIp(id, false);  // Clear interrupt pending.
         }
     }
@@ -733,7 +732,7 @@ Domain::tryClearIe(unsigned id)
 
 
 uint64_t
-Domain::imsicAddress(unsigned hartIx)
+Domain::imsicAddress(unsigned hartIx, unsigned guestIx)
 {
   using CN = CsrNumber;
 
@@ -756,14 +755,10 @@ Domain::imsicAddress(unsigned hartIx)
     }
   else
     {
-      CN ntc = advance(CN::Target1, hartIx - 1);
-      Target target{root->csrAt(ntc).read()};
-      uint64_t guest = target.mbits_.guest_;
-
       Smsiaddrcfgh scfgh{root->csrAt(CN::Smsiaddrcfgh).read()};
       uint64_t low = root->csrAt(CN::Smsiaddrcfg).read();
       addr = (uint64_t(scfgh.bits_.ppn_) << itemBits) | low;
-      addr = (addr | (gg << (hhxs + 12)) | (hh << scfgh.bits_.lhxs_) | guest) << 12;
+      addr = (addr | (gg << (hhxs + 12)) | (hh << scfgh.bits_.lhxs_) | guestIx) << 12;
     }
 
   return addr;
