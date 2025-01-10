@@ -24,11 +24,10 @@ main(int, char**)
 
   unsigned hartCount = 2;
   unsigned interruptCount = 33;
-  unsigned domainCount = 4;
 
   uint64_t addr = 0x1000000;
-  uint64_t stride = 32*1024;
-  Aplic aplic(addr, stride, hartCount, domainCount, interruptCount);
+  uint64_t domainSize = 32*1024;
+  Aplic aplic(hartCount, interruptCount);
 
   aplic.setDeliveryMethod(callback);
   aplic.setImsicMethod(imsicFunc);
@@ -40,14 +39,14 @@ main(int, char**)
 
   // Create root and child domains.
   bool isMachine = true;
-  auto root = aplic.createDomain("root", nullptr, addr, isMachine);
+  auto root = aplic.createDomain("root", nullptr, addr, domainSize, isMachine);
 
   isMachine = false;
-  auto child = aplic.createDomain("child", root, addr + stride, isMachine);
+  auto child = aplic.createDomain("child", root, addr + domainSize, domainSize, isMachine);
   isMachine = true;
-  auto child2 = aplic.createDomain("child2", root, addr + 2*stride, isMachine);
+  auto child2 = aplic.createDomain("child2", root, addr + 2*domainSize, domainSize, isMachine);
   isMachine = false;
-  auto child3 = aplic.createDomain("child3", child2, addr + 3*stride, isMachine);
+  auto child3 = aplic.createDomain("child3", child2, addr + 3*domainSize, domainSize, isMachine);
 
   // Aplic creation done. Test APIs.
 

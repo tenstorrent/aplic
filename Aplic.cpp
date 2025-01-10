@@ -6,22 +6,9 @@
 using namespace TT_APLIC;
 
 
-Aplic::Aplic(uint64_t addr, uint64_t stride, unsigned hartCount,
-             unsigned domainCount, unsigned interruptCount)
-  : addr_(addr), stride_(stride), size_(stride*domainCount), hartCount_(hartCount),
-    domainCount_(domainCount), interruptCount_(interruptCount)
+Aplic::Aplic(unsigned hartCount, unsigned interruptCount)
+  : hartCount_(hartCount), interruptCount_(interruptCount)
 {
-  if ((addr & 0xfff) != 0)
-    throw std::runtime_error("Invalid aplic address -- must be a multiple of 4096");
-
-  if ((stride & 0xfff) != 0)
-    throw std::runtime_error("Invalid aplic stride -- must be a multiple of 4096");
-
-  unsigned domainSize = Domain::IdcOffset + hartCount * sizeof(Idc);
-  if (stride < domainSize)
-    throw std::runtime_error("Invalid aplic stride -- too small for given hart count");
-
-  regionDomains_.resize(domainCount);
   interruptStates_.resize(interruptCount+1);
 }
 
@@ -69,20 +56,18 @@ Aplic::setSourceState(unsigned id, bool state)
 
 
 std::shared_ptr<Domain>
-Aplic::createDomain(const std::string& name, std::shared_ptr<Domain> parent, uint64_t addr, bool isMachine)
+Aplic::createDomain(const std::string& name, std::shared_ptr<Domain> parent, uint64_t addr, uint64_t size, bool isMachine)
 {
-  if ((addr % stride_) != 0)
+  if (addr % 4096 != 0)
     return nullptr;
-  
-  if ((size_) == 0)
-    return nullptr;
-    
-  unsigned regionIx = 0;
-  if (not findRegionByAddr(addr, regionIx))
-    return nullptr;    // Addr is out of bounds.
 
-  if (regionDomains_.at(regionIx))
-    return nullptr;    // Region of addr already occupied.
+  if (size < 16*1024)
+    return nullptr;
+
+  if (size % 4096 != 0)
+    return nullptr;
+
+  // TODO: check for overlap with other domains
 
   if (not root_ and parent)
     return nullptr;   // First created domain must be root.
@@ -99,13 +84,14 @@ Aplic::createDomain(const std::string& name, std::shared_ptr<Domain> parent, uin
   if (root_ and not parent)
     return nullptr;   // Cannot have more than one root.
 
-  auto domain = std::make_shared<Domain>(name, parent, addr, stride_, hartCount_,
+  auto domain = std::make_shared<Domain>(name, parent, addr, size, hartCount_,
                                          interruptCount_, isMachine);
 
   domain->setImsicMethod(imsicFunc_);
   domain->setDeliveryMethod(deliveryFunc_);
 
-  regionDomains_.at(regionIx) = domain;
+  domains_.push_back(domain);
+
   if (not root_)
     root_ = domain;
 

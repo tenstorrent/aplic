@@ -16,12 +16,8 @@ namespace TT_APLIC
   public:
 
     /// Constructor. interruptCount is the largest supported interrupt id and
-    /// must be less than or equal to 1023. Stride is the offset in bytes
-    /// between the starting address of two consecutive domains. The address
-    /// space region occupied by this Aplic has a size of n = domainCount *
-    /// stride and occupies the addresses addr to addr + n - 1.
-    Aplic(uint64_t addr, uint64_t stride, unsigned hartCount,
-          unsigned domainCount, unsigned interruptCount);
+    /// must be less than or equal to 1023.
+    Aplic(unsigned hartCount, unsigned interruptCount);
 
     /// Read a memory mapped register associated with this Aplic. Return true
     /// on success. Return false leaving value unmodified if addr is not in the
@@ -43,7 +39,7 @@ namespace TT_APLIC
     /// machine privilege. A parent domain must be created before its child. Return
     /// pointer to created domain or nullptr if we fail to create a domain.
     std::shared_ptr<Domain> createDomain(const std::string& name, std::shared_ptr<Domain> parent,
-                                         uint64_t addr, bool isMachine);
+                                         uint64_t addr, uint64_t size, bool isMachine);
 
     /// Define a callback function for this Aplic to directly deliver/un-deliver an
     /// interrupt to a hart. When an interrupt becomes active (ready for delivery) or
@@ -52,7 +48,7 @@ namespace TT_APLIC
     void setDeliveryMethod(std::function<bool(unsigned hartIx, bool machine, bool ip)> func)
     {
       deliveryFunc_ = func;
-      for (auto domain : regionDomains_)
+      for (auto domain : domains_)
         if (domain)
           domain->setDeliveryMethod(func);
     }
@@ -64,14 +60,17 @@ namespace TT_APLIC
     void setImsicMethod(std::function<bool(uint64_t addr, unsigned size, uint64_t data)> func)
     {
       imsicFunc_ = func;
-      for (auto domain : regionDomains_)
+      for (auto domain : domains_)
         if (domain)
           domain->setImsicMethod(func);
     }
 
     bool contains_addr(uint64_t addr)
     {
-      return addr >= addr_ and addr < addr_ + size_;
+      for (auto domain : domains_)
+        if (domain->contains_addr(addr))
+          return true;
+      return false;
     }
 
   protected:
@@ -81,35 +80,18 @@ namespace TT_APLIC
     /// bounds.
     std::shared_ptr<Domain> findDomainByAddr(uint64_t addr)
     {
-      unsigned regionIx = 0;
-      if (not findRegionByAddr(addr, regionIx))
-        return nullptr;
-      return regionDomains_.at(regionIx);
-    }
-
-    /// Find the index of the memory sub-region associated with the given
-    /// address. The Aplic memory region is divided into consecutive sub-regions
-    /// each of size domainSize. Return true on success.  Return false if
-    /// address is outside the memory region of this Aplic.
-    bool findRegionByAddr(uint64_t addr, unsigned& index) const
-    {
-      if (addr < addr_ or addr >= addr_ + stride_*domainCount_)
-        return false;
-      index = (addr - addr_) / stride_;
-      return true;
+      for (auto domain : domains_)
+        if (domain->contains_addr(addr))
+          return domain;
+      return nullptr;
     }
 
   private:
 
-    uint64_t addr_ = 0;
-    uint64_t stride_ = 0;    // Domain size.
-    uint64_t size_ = 0;
     unsigned hartCount_ = 0;
-    unsigned domainCount_ = 0;
     unsigned interruptCount_ = 0;
     std::shared_ptr<Domain> root_ = nullptr;
-    // Vector of domains indexed by memory region.
-    std::vector<std::shared_ptr<Domain>> regionDomains_;
+    std::vector<std::shared_ptr<Domain>> domains_;
 
     // Current state of interrupt sources
     std::vector<bool> interruptStates_;

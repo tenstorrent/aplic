@@ -346,6 +346,10 @@ namespace TT_APLIC
       assert(size >= IdcOffset + hartCount * 32);
     }
 
+    /// Address check
+    bool contains_addr(uint64_t addr)
+    { return (addr >= addr_ and addr < (addr_ + size_)); }
+
     /// Read a memory mapped register associated with this Domain. Return true
     /// on success. Return false leaving value unmodified if addr is not in the
     /// range of this Domain or if size/alignment is not valid. This method
