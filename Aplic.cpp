@@ -7,7 +7,7 @@ using namespace TT_APLIC;
 
 
 Aplic::Aplic(uint64_t addr, uint64_t stride, unsigned hartCount,
-	     unsigned domainCount, unsigned interruptCount)
+             unsigned domainCount, unsigned interruptCount)
   : addr_(addr), stride_(stride), size_(stride*domainCount), hartCount_(hartCount),
     domainCount_(domainCount), interruptCount_(interruptCount)
 {
@@ -100,7 +100,7 @@ Aplic::createDomain(const std::string& name, std::shared_ptr<Domain> parent, uin
     return nullptr;   // Cannot have more than one root.
 
   auto domain = std::make_shared<Domain>(name, parent, addr, stride_, hartCount_,
-					 interruptCount_, isMachine);
+                                         interruptCount_, isMachine);
 
   domain->setImsicMethod(imsicFunc_);
   domain->setDeliveryMethod(deliveryFunc_);

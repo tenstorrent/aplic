@@ -28,17 +28,17 @@ Domain::read(uint64_t addr, unsigned size, uint64_t& value)
       // Hide MSIADDRCFG if locked or not root domain
       using CN = CsrNumber;
       if (ix >= uint64_t(CN::Mmsiaddrcfg) and ix <= uint64_t(CN::Smsiaddrcfgh))
-	{
-	  auto root = rootDomain();
-	  bool rootLocked = (root->csrAt(CN::Mmsiaddrcfgh).read() >> 31) & 1;
-	  if (rootLocked or not isRoot())
-	    val = ix == uint64_t(CN::Mmsiaddrcfgh) ? 0x80000000 : 0;
-	}
+        {
+          auto root = rootDomain();
+          bool rootLocked = (root->csrAt(CN::Mmsiaddrcfgh).read() >> 31) & 1;
+          if (rootLocked or not isRoot())
+            val = ix == uint64_t(CN::Mmsiaddrcfgh) ? 0x80000000 : 0;
+        }
       else if (ix == uint64_t(CN::Genmsi))
-	{
-	  if (directDelivery())
-	    val = 0;
-	}
+        {
+          if (directDelivery())
+            val = 0;
+        }
     }
   else
     ok = readIdc(addr, size, val);
@@ -75,50 +75,50 @@ Domain::write(uint64_t addr, unsigned size, uint64_t value)
   if (itemIx < csrs_.size())
     {
       if (itemIx >= uint64_t(CN::Mmsiaddrcfg) and itemIx <= uint64_t(CN::Smsiaddrcfgh))
-	{
-	  auto root = rootDomain();
-	  bool rootLocked = (root->csrAt(CN::Mmsiaddrcfgh).read() >> 31) & 1;
-	  if (rootLocked or not isRoot())
-	    return true; // No effect if not root or if root is locked.
-	}
+        {
+          auto root = rootDomain();
+          bool rootLocked = (root->csrAt(CN::Mmsiaddrcfgh).read() >> 31) & 1;
+          if (rootLocked or not isRoot())
+            return true; // No effect if not root or if root is locked.
+        }
       else if (itemIx >= uint64_t(CN::Setip0) and itemIx <= uint64_t(CN::Setip31))
-	{
-	  unsigned id0 = (itemIx - unsigned(CN::Setip0)) * bitsPerItem;
-	  for (unsigned bitIx = 0; bitIx < bitsPerItem; ++bitIx)
-	    if ((val >> bitIx) & 1)
-	      trySetIp(id0 + bitIx);
-	  return true;
-	}
+        {
+          unsigned id0 = (itemIx - unsigned(CN::Setip0)) * bitsPerItem;
+          for (unsigned bitIx = 0; bitIx < bitsPerItem; ++bitIx)
+            if ((val >> bitIx) & 1)
+              trySetIp(id0 + bitIx);
+          return true;
+        }
       else if (itemIx == uint64_t(CN::Setipnum))
-	{
-	  trySetIp(val);  // Value is the interrupt id.
-	  return true;  // Setipnum CSR is not updated (read zero).
-	}
+        {
+          trySetIp(val);  // Value is the interrupt id.
+          return true;  // Setipnum CSR is not updated (read zero).
+        }
       if (itemIx >= uint64_t(CN::Inclrip0) and itemIx <= uint64_t(CN::Inclrip31))
-	{
-	  unsigned id0 = (itemIx - unsigned(CN::Inclrip0)) * bitsPerItem;
-	  for (unsigned bitIx = 0; bitIx < bitsPerItem; ++bitIx)
-	    if ((val >> bitIx) & 1)
-	      tryClearIp(id0 + bitIx);
-	  return true;
-	}
+        {
+          unsigned id0 = (itemIx - unsigned(CN::Inclrip0)) * bitsPerItem;
+          for (unsigned bitIx = 0; bitIx < bitsPerItem; ++bitIx)
+            if ((val >> bitIx) & 1)
+              tryClearIp(id0 + bitIx);
+          return true;
+        }
       else if (itemIx == uint64_t(CN::Clripnum))
-	{
-	  tryClearIp(val);  // Value is the interrupt id.
-	  return true;
-	}
+        {
+          tryClearIp(val);  // Value is the interrupt id.
+          return true;
+        }
       else if (itemIx == uint64_t(CN::Setipnumle))
-	{
-	  trySetIp(value);
-	  return true;
-	}
+        {
+          trySetIp(value);
+          return true;
+        }
       else if (itemIx == uint64_t(CN::Setipnumbe))
-	{
-	  val = value;
-	  val = __builtin_bswap32(val);
-	  trySetIp(value);
-	  return true;
-	}
+        {
+          val = value;
+          val = __builtin_bswap32(val);
+          trySetIp(value);
+          return true;
+        }
       else if (itemIx >= uint64_t(CN::Setie0) and itemIx <= uint64_t(CN::Setie31))
         {
           unsigned id = (itemIx - uint64_t(CN::Setie0)) * bitsPerItem;
@@ -128,10 +128,10 @@ Domain::write(uint64_t addr, unsigned size, uint64_t value)
           return true;
         }
       else if (itemIx == uint64_t(CN::Setienum))
-	{
-	  trySetIe(val);
-	  return true;
-	}
+        {
+          trySetIe(val);
+          return true;
+        }
       else if (itemIx >= uint64_t(CN::Clrie0) and itemIx <= uint64_t(CN::Clrie31))
         {
           unsigned id0 = (itemIx - uint64_t(CN::Clrie0)) * bitsPerItem;
@@ -141,41 +141,41 @@ Domain::write(uint64_t addr, unsigned size, uint64_t value)
           return true;
         }
       else if (itemIx == uint64_t(CN::Clrienum))
-	{
-	  tryClearIe(val);
-	  return true;
-	}
+        {
+          tryClearIe(val);
+          return true;
+        }
       else if (itemIx >= uint64_t(CN::Sourcecfg1) and itemIx <= uint64_t(CN::Sourcecfg1023))
-	{
-	  if (isLeaf() and Sourcecfg{val}.bits_.d_)
-	    val = 0;  // Section 4.5.2 of spec: Attempt to set D in a leaf domain
+        {
+          if (isLeaf() and Sourcecfg{val}.bits_.d_)
+            val = 0;  // Section 4.5.2 of spec: Attempt to set D in a leaf domain
 
-	  csrs_.at(itemIx).write(val);
+          csrs_.at(itemIx).write(val);
 
-	  // Writing sourcecfg may change a source status. Update enable/pending bits.
-	  postSourcecfgWrite(itemIx);
-	  return true;
-	}
+          // Writing sourcecfg may change a source status. Update enable/pending bits.
+          postSourcecfgWrite(itemIx);
+          return true;
+        }
       else if (itemIx >= uint64_t(CN::Target1) and itemIx <= uint64_t(CN::Target1023))
-	{
-	  if (directDelivery())
-	    {
-	      Target tgt{val};
-	      if (tgt.bits_.prio_ == 0)
-		tgt.bits_.prio_ = 1;   // Priority bits must not be zero.
-	      val = tgt.value_;
-	    }
-	}
+        {
+          if (directDelivery())
+            {
+              Target tgt{val};
+              if (tgt.bits_.prio_ == 0)
+                tgt.bits_.prio_ = 1;   // Priority bits must not be zero.
+              val = tgt.value_;
+            }
+        }
       else if (itemIx == uint64_t(CN::Genmsi))
-	{
-	  if (not directDelivery() and imsicFunc_)
-	    {
-	      Genmsi genmsi{val};
-	      uint64_t imsicAddr = imsicAddress(genmsi.bits_.hart_);
-	      uint32_t eiid = genmsi.bits_.eiid_;
-	      imsicFunc_(imsicAddr, sizeof(eiid), eiid);
-	    }
-	}
+        {
+          if (not directDelivery() and imsicFunc_)
+            {
+              Genmsi genmsi{val};
+              uint64_t imsicAddr = imsicAddress(genmsi.bits_.hart_);
+              uint32_t eiid = genmsi.bits_.eiid_;
+              imsicFunc_(imsicAddr, sizeof(eiid), eiid);
+            }
+        }
 
       csrs_.at(itemIx).write(val);
 
@@ -223,7 +223,7 @@ Domain::readIdc(uint64_t addr, unsigned size, CsrValue& value)
       value = idc->topi_;
       id = (value >> 16) & 0x3ff;
       if (id >= idc->ithreshold_ and idc->ithreshold_ != 0)
-	value = 0;
+        value = 0;
       break;
 
     case Idc::Field::Claimi :
@@ -232,10 +232,10 @@ Domain::readIdc(uint64_t addr, unsigned size, CsrValue& value)
       if (id == 0)
         {
           idc->iforce_ = 0;
-	  deliveryFunc_(idcIx, isMachinePrivilege(), false);
+          deliveryFunc_(idcIx, isMachinePrivilege(), false);
         }
       else
-	tryClearIp(id);
+        tryClearIp(id);
       break;
 
     default :
@@ -270,13 +270,13 @@ Domain::writeIdc(uint64_t addr, unsigned size, CsrValue value)
 
     case Idc::Field::Iforce :
       {
-	idc->iforce_ = value & 1;
+        idc->iforce_ = value & 1;
         // TODO(paul): what if topi is not 0?
         CsrValue topi;
         readIdc(topiAddress(idcIx), sizeof(CsrValue), topi);
-	if (idc->iforce_ and topi == 0 and idc->idelivery_ and
-	    interruptEnabled() and deliveryFunc_)
-	  deliveryFunc_(idcIx, isMachinePrivilege(), true);
+        if (idc->iforce_ and topi == 0 and idc->idelivery_ and
+            interruptEnabled() and deliveryFunc_)
+          deliveryFunc_(idcIx, isMachinePrivilege(), true);
       }
       break;
 
@@ -328,21 +328,21 @@ Domain::postSourcecfgWrite(unsigned csrn)
     {
       auto child = children_.at(childIx);
       if (delegated)
-	{
-	  // Child Sourcecfg mask for given id is now writable.
-	  child->csrs_.at(csrn).setMask(Sourcecfg::nonDelegatedMask());
+        {
+          // Child Sourcecfg mask for given id is now writable.
+          child->csrs_.at(csrn).setMask(Sourcecfg::nonDelegatedMask());
 
-	  // Parent Sourcecfg mask is now for delegated
-	  csrs_.at(csrn).setMask(Sourcecfg::delegatedMask());
-	}
+          // Parent Sourcecfg mask is now for delegated
+          csrs_.at(csrn).setMask(Sourcecfg::delegatedMask());
+        }
       else
-	{
-	  // Child Sourcecfg mask for given id is now non-writable
-	  child->csrs_.at(csrn).setMask(0);
+        {
+          // Child Sourcecfg mask for given id is now non-writable
+          child->csrs_.at(csrn).setMask(0);
 
-	  // Parent Sourcecfg mask is now for non-delegated
-	  csrs_.at(csrn).setMask(Sourcecfg::nonDelegatedMask());
-	}
+          // Parent Sourcecfg mask is now for non-delegated
+          csrs_.at(csrn).setMask(Sourcecfg::nonDelegatedMask());
+        }
 
       // Interrupt pending and enabled now writable in child if delegated.
       child->setIeWritable(id, delegated);
@@ -374,9 +374,9 @@ Domain::defineCsrs()
   for (unsigned ix = 1; ix <= MaxId; ++ix)
     {
       if (ix > interruptCount_)
-	mask = 0;
+        mask = 0;
       else
-	mask = isRoot() ? Sourcecfg::nonDelegatedMask() : 0;
+        mask = isRoot() ? Sourcecfg::nonDelegatedMask() : 0;
       std::string name = base + std::to_string(ix);
       CN cn{unsigned(CN::Sourcecfg1) + ix - 1};
       csrAt(cn) = DomainCsr(name, cn, reset, mask);
@@ -439,14 +439,14 @@ Domain::defineCsrs()
     {
       mask = 0;
       if (ix * bitsPerItem <= interruptCount_)
-	{
-	  // Interrupt count is not a multiple of bitsPerItem. Clear
-	  // upper part of item.
-	  unsigned count = bitsPerItem - ((interruptCount_+1) % bitsPerItem);
-	  mask = (allOnes << count) >> count;
+        {
+          // Interrupt count is not a multiple of bitsPerItem. Clear
+          // upper part of item.
+          unsigned count = bitsPerItem - ((interruptCount_+1) % bitsPerItem);
+          mask = (allOnes << count) >> count;
       if (ix == 0)
           mask &= ~1;
-	}
+        }
 
       CN cn = advance(CN::Setip0, ix);
       csrAt(cn).setMask(mask);
@@ -610,55 +610,55 @@ Domain::deliverInterrupt(unsigned id, bool ready)
       IdcTopi topi{idc.topi_};
       unsigned topPrio = topi.bits_.prio_;
       if (ready)
-	{
-	  if (topPrio == 0 or prio < topPrio or (prio == topPrio and id < topi.bits_.id_))
-	    {
-	      topi.bits_.prio_ = prio;
-	      topi.bits_.id_ = id;
-	    }
-	}
+        {
+          if (topPrio == 0 or prio < topPrio or (prio == topPrio and id < topi.bits_.id_))
+            {
+              topi.bits_.prio_ = prio;
+              topi.bits_.id_ = id;
+            }
+        }
       else if (id == topi.bits_.id_)
-	{
-	  // Interrupt that used to determine our top id went away. Re-compute
-	  // top id and priority in interrupt delivery control.
-	  topi.bits_.prio_ = 0;
-	  topi.bits_.id_ = 0;
-	  for (unsigned iid = 1; iid <= interruptCount_; ++iid)
-	    {
-	      CN ntc = advance(CN::Target1, iid - 1);
-	      CsrValue targetVal = csrAt(ntc).read();
-	      Target target{targetVal};
-	      if (target.bits_.hart_ == hart and id != iid)
-		if (isActive(iid) and readIe(iid) and readIp(iid))
-		  if (topi.bits_.prio_ == 0 or target.bits_.prio_ < topi.bits_.prio_)
-		    {
-		      topi.bits_.prio_ = target.bits_.prio_;
-		      topi.bits_.id_ = iid;
-		    }
-	    }
-	}
+        {
+          // Interrupt that used to determine our top id went away. Re-compute
+          // top id and priority in interrupt delivery control.
+          topi.bits_.prio_ = 0;
+          topi.bits_.id_ = 0;
+          for (unsigned iid = 1; iid <= interruptCount_; ++iid)
+            {
+              CN ntc = advance(CN::Target1, iid - 1);
+              CsrValue targetVal = csrAt(ntc).read();
+              Target target{targetVal};
+              if (target.bits_.hart_ == hart and id != iid)
+                if (isActive(iid) and readIe(iid) and readIp(iid))
+                  if (topi.bits_.prio_ == 0 or target.bits_.prio_ < topi.bits_.prio_)
+                    {
+                      topi.bits_.prio_ = target.bits_.prio_;
+                      topi.bits_.id_ = iid;
+                    }
+            }
+        }
 
       idc.topi_ = topi.value_;  // Update IDC.
 
       if (topi.bits_.id_)
-	{
-	  if ((topi.bits_.prio_ < idc.ithreshold_ or idc.ithreshold_ == 0) and
-	      idc.idelivery_ and interruptEnabled() and deliveryFunc_)
-	    deliveryFunc_(hart, isMachinePrivilege(), true);
-	}
+        {
+          if ((topi.bits_.prio_ < idc.ithreshold_ or idc.ithreshold_ == 0) and
+              idc.idelivery_ and interruptEnabled() and deliveryFunc_)
+            deliveryFunc_(hart, isMachinePrivilege(), true);
+        }
       else
-	deliveryFunc_(hart, isMachinePrivilege(), false);
+        deliveryFunc_(hart, isMachinePrivilege(), false);
     }
   else
     {
       // Deliver to IMSIC
       if (ready and interruptEnabled() and imsicFunc_)
-	{
-	  uint64_t imsicAddr = imsicAddress(hart);
-	  uint32_t eiid = target.mbits_.eiid_;
-	  imsicFunc_(imsicAddr, sizeof(eiid), eiid);
-	  writeIp(id, false);  // Clear interrupt pending.
-	}
+        {
+          uint64_t imsicAddr = imsicAddress(hart);
+          uint32_t eiid = target.mbits_.eiid_;
+          imsicFunc_(imsicAddr, sizeof(eiid), eiid);
+          writeIp(id, false);  // Clear interrupt pending.
+        }
     }
 }
 

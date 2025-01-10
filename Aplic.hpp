@@ -21,7 +21,7 @@ namespace TT_APLIC
     /// space region occupied by this Aplic has a size of n = domainCount *
     /// stride and occupies the addresses addr to addr + n - 1.
     Aplic(uint64_t addr, uint64_t stride, unsigned hartCount,
-	  unsigned domainCount, unsigned interruptCount);
+          unsigned domainCount, unsigned interruptCount);
 
     /// Read a memory mapped register associated with this Aplic. Return true
     /// on success. Return false leaving value unmodified if addr is not in the
@@ -43,7 +43,7 @@ namespace TT_APLIC
     /// machine privilege. A parent domain must be created before its child. Return
     /// pointer to created domain or nullptr if we fail to create a domain.
     std::shared_ptr<Domain> createDomain(const std::string& name, std::shared_ptr<Domain> parent,
-					 uint64_t addr, bool isMachine);
+                                         uint64_t addr, bool isMachine);
 
     /// Define a callback function for this Aplic to directly deliver/un-deliver an
     /// interrupt to a hart. When an interrupt becomes active (ready for delivery) or
@@ -53,8 +53,8 @@ namespace TT_APLIC
     {
       deliveryFunc_ = func;
       for (auto domain : regionDomains_)
-	if (domain)
-	  domain->setDeliveryMethod(func);
+        if (domain)
+          domain->setDeliveryMethod(func);
     }
 
     /// Define a callback function for this Aplic to write to the IMSIC of a hart. When an
@@ -65,8 +65,8 @@ namespace TT_APLIC
     {
       imsicFunc_ = func;
       for (auto domain : regionDomains_)
-	if (domain)
-	  domain->setImsicMethod(func);
+        if (domain)
+          domain->setImsicMethod(func);
     }
 
     bool contains_addr(uint64_t addr)
@@ -83,7 +83,7 @@ namespace TT_APLIC
     {
       unsigned regionIx = 0;
       if (not findRegionByAddr(addr, regionIx))
-	return nullptr;
+        return nullptr;
       return regionDomains_.at(regionIx);
     }
 
@@ -94,7 +94,7 @@ namespace TT_APLIC
     bool findRegionByAddr(uint64_t addr, unsigned& index) const
     {
       if (addr < addr_ or addr >= addr_ + stride_*domainCount_)
-	return false;
+        return false;
       index = (addr - addr_) / stride_;
       return true;
     }

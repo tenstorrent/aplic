@@ -10,15 +10,15 @@ main(int, char**)
   // Define an interrupt delivery callback
   auto callback = [] (unsigned hartIx, bool mPrivilege, bool interState) -> bool {
     std::cerr << "Delivering interrupt hart=" << hartIx << " privilege="
-	      << (mPrivilege? "machine" : "supervisor")
-	      << " interrupt-state=" << (interState? "on" : "off") << '\n';
+              << (mPrivilege? "machine" : "supervisor")
+              << " interrupt-state=" << (interState? "on" : "off") << '\n';
     return true;
   };
 
   // Define an IMSIC delivery callback
   auto imsicFunc = [] (uint64_t addr, unsigned /*size*/, uint64_t data) -> bool {
     std::cerr << "Imsic write addr=0x" << std::hex << addr << " value="
-	      << data << std::dec << '\n';
+              << data << std::dec << '\n';
     return true;
   };
 

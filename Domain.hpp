@@ -264,7 +264,7 @@ namespace TT_APLIC
     DomainCsr() = default;
 
     DomainCsr(const std::string& name, CsrNumber csrn,
-	      CsrValue reset, CsrValue mask)
+              CsrValue reset, CsrValue mask)
       : name_(name), csrn_(csrn), reset_(reset), value_(reset), mask_(mask)
     { }
 
@@ -323,7 +323,7 @@ namespace TT_APLIC
 
     /// Aplic domain constants.
     enum { IdcOffset = 0x4000, MaxId = 1023, MaxHart = 16384, Align = 16*1024,
-	   MaxIpriolen = 8 };
+           MaxIpriolen = 8 };
 
     /// Default constructor.
     Domain()
@@ -333,10 +333,10 @@ namespace TT_APLIC
     /// must be less than or equal to 1023. Size is the number of bytes
     /// occupied by this domain in the memory address space.
     Domain(const std::string& name, std::shared_ptr<Domain> parent, uint64_t addr, uint64_t size,
-	   unsigned hartCount, unsigned interruptCount, bool isMachine)
+           unsigned hartCount, unsigned interruptCount, bool isMachine)
       : name_(name), addr_(addr), size_(size), hartCount_(hartCount),
-	interruptCount_(interruptCount), parent_(parent),
-	isMachine_(isMachine)
+        interruptCount_(interruptCount), parent_(parent),
+        isMachine_(isMachine)
     {
       defineCsrs();
       defineIdcs();
@@ -387,7 +387,7 @@ namespace TT_APLIC
     /// domain.
     bool isActive(unsigned id) const
     { return id != 0 and id <= interruptCount_ and not isDelegated(id) and
-	sourceMode(id) != SourceMode::Inactive; }
+        sourceMode(id) != SourceMode::Inactive; }
 
     /// Return true if interrupt with given id is inverted in this domain
     /// (active low).
@@ -395,7 +395,7 @@ namespace TT_APLIC
     {
       using SM = SourceMode;
       return id != 0 and id <= interruptCount_ and not isDelegated(id) and
-	(sourceMode(id)== SM::Edge0 or sourceMode(id) == SM::Level0);
+        (sourceMode(id)== SM::Edge0 or sourceMode(id) == SM::Level0);
     }
 
     /// Return true if interrupt with given id is level sensitive this domain.
@@ -403,7 +403,7 @@ namespace TT_APLIC
     {
       using SM = SourceMode;
       return id != 0 and id <= interruptCount_ and not isDelegated(id) and
-	(sourceMode(id) == SM::Level0 or sourceMode(id) == SM::Level1);
+        (sourceMode(id) == SM::Level0 or sourceMode(id) == SM::Level1);
     }
 
     constexpr bool isFalling(bool prev, bool curr) const
@@ -502,7 +502,7 @@ namespace TT_APLIC
     Domain* rootDomain()
     {
       if (isRoot())
-	return this;
+        return this;
       return getParent()->rootDomain();
     }
 
@@ -520,11 +520,11 @@ namespace TT_APLIC
     {
       unsigned fieldSize = sizeof(CsrValue);  // Required size.
       if ((addr & (fieldSize - 1)) != 0)
-	return nullptr;
+        return nullptr;
 
       uint64_t ix = (addr - (addr_ + IdcOffset)) / 32;
       if (ix >= idcs_.size())
-	return nullptr;
+        return nullptr;
       idcIndex = ix;
 
       Idc& idc = idcs_.at(idcIndex);
@@ -597,7 +597,7 @@ namespace TT_APLIC
     void makeWritable(unsigned id, CsrNumber csrn, bool flag)
     {
       if (id == 0 or id > interruptCount_)
-	return;
+        return;
       CsrNumber cn = advance(csrn, id);
       unsigned bitsPerValue = sizeof(CsrValue)*8;
       CsrValue bitMask = CsrValue(1) << (id % bitsPerValue);
