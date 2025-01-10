@@ -98,6 +98,5 @@ Aplic::createDomain(const std::string& name, std::shared_ptr<Domain> parent, uin
   if (parent)
     parent->addChild(domain);
 
-  domain->setDeliveryMethod(deliveryFunc_);
   return domain;
 }
