@@ -94,7 +94,7 @@ Domain::write(uint64_t addr, unsigned size, uint64_t value)
           trySetIp(val);  // Value is the interrupt id.
           return true;  // Setipnum CSR is not updated (read zero).
         }
-      if (itemIx >= uint64_t(CN::Inclrip0) and itemIx <= uint64_t(CN::Inclrip31))
+      else if (itemIx >= uint64_t(CN::Inclrip0) and itemIx <= uint64_t(CN::Inclrip31))
         {
           unsigned id0 = (itemIx - unsigned(CN::Inclrip0)) * bitsPerItem;
           for (unsigned bitIx = 0; bitIx < bitsPerItem; ++bitIx)
