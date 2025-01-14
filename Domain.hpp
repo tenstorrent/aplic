@@ -597,7 +597,7 @@ namespace TT_APLIC
 
     /// Called after a CSR write to update masks and bits depending on sourcecfg
     /// if sourcecfg is written. Number of written CSR is passed in csrn.
-    void postSourcecfgWrite(unsigned csrn);
+    void sourcecfgWrite(unsigned csrn, CsrValue val);
 
     /// Make writable/non-writable the bit corresponding to id in the given
     /// set of CSRs when given flag is true/false.

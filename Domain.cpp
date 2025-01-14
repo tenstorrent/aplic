@@ -147,13 +147,8 @@ Domain::write(uint64_t addr, unsigned size, uint64_t value)
         }
       else if (itemIx >= uint64_t(CN::Sourcecfg1) and itemIx <= uint64_t(CN::Sourcecfg1023))
         {
-          if (isLeaf() and Sourcecfg{val}.bits_.d_)
-            val = 0;  // Section 4.5.2 of spec: Attempt to set D in a leaf domain
-
-          csrs_.at(itemIx).write(val);
-
           // Writing sourcecfg may change a source status. Update enable/pending bits.
-          postSourcecfgWrite(itemIx);
+          sourcecfgWrite(itemIx, val);
           return true;
         }
       else if (itemIx >= uint64_t(CN::Target1) and itemIx <= uint64_t(CN::Target1023))
@@ -307,61 +302,77 @@ Domain::writeIdc(uint64_t addr, unsigned size, CsrValue value)
 
 
 void
-Domain::postSourcecfgWrite(unsigned csrn)
+Domain::sourcecfgWrite(unsigned csrn, CsrValue val)
 {
   using CN = CsrNumber;
 
   if (csrn < unsigned(CN::Sourcecfg1) or csrn > unsigned(CN::Sourcecfg1023))
     return;
 
+  auto allOnes = ~CsrValue(0);
   unsigned id = csrn - unsigned(CN::Sourcecfg1) + 1;
-  bool flag = isActive(id);
+  auto& sourcecfg = csrs_.at(csrn);
+  CN target_csrn = advance(CN::Target1, id - 1);
 
-  if (not flag)
+  auto sourcecfg_mask = (val & (1<<10)) ? Sourcecfg::delegatedMask() : Sourcecfg::nonDelegatedMask();
+  auto new_val = Sourcecfg{val & sourcecfg_mask};
+
+  if (isLeaf() and new_val.bits_.d_)
+    new_val = 0;  // Section 4.5.2 of spec: Attempt to set D in a leaf domain
+
+  if (new_val.bits_.d_ and new_val.bits_.child_ >= children_.size())
+    new_val.bits_.child_ = 0; // child index field is WLRL
+
+  unsigned old_child_index = children_.size(); // only valid if was_delegated
+  unsigned new_child_index = children_.size(); // only valid if now_delegated
+  bool was_delegated = isDelegated(id, old_child_index);
+
+  sourcecfg.write(new_val.value_);
+
+  bool now_delegated = isDelegated(id, new_child_index);
+
+  auto old_child = was_delegated ? children_.at(old_child_index) : std::make_shared<Domain>();
+  auto new_child = now_delegated ? children_.at(new_child_index) : std::make_shared<Domain>();
+
+  if (was_delegated and old_child != new_child)
     {
-      // Clear interrupt enabled/pending bits if id is not active.
+      old_child->sourcecfgWrite(csrn, 0);
+      old_child->csrs_.at(csrn).setMask(0);
+    }
+
+  if (now_delegated and old_child != new_child)
+    {
+      new_child->csrs_.at(csrn).setMask(allOnes);
+      new_child->csrAt(target_csrn).setMask(allOnes);
+    }
+
+  if (isActive(id))
+    {
+      csrAt(target_csrn).setMask(allOnes);
+      setIeWritable(id, true);
+      setIpWritable(id, true);
+    }
+  else
+    {
       writeIp(id, false);
       writeIe(id, false);
+      setIeWritable(id, false);
+      setIpWritable(id, false);
+      csrAt(target_csrn).write(0);
+      csrAt(target_csrn).setMask(0);
     }
 
-  // Make ip/IE writable or read-only-zero.
-  setIpWritable(id, flag);
-  setIeWritable(id, flag);
-
-  // Check delegation.
-  unsigned childIx = 0;
-  bool delegated = isDelegated(id, childIx);
-  CsrValue cfgMask = delegated ? Sourcecfg::delegatedMask() : Sourcecfg::nonDelegatedMask();
-  csrs_.at(csrn).setMask(cfgMask);
-  if (childIx < children_.size())
-    {
-      auto child = children_.at(childIx);
-      if (delegated)
-        {
-          // Child Sourcecfg mask for given id is now writable.
-          child->csrs_.at(csrn).setMask(Sourcecfg::nonDelegatedMask());
-
-          // Parent Sourcecfg mask is now for delegated
-          csrs_.at(csrn).setMask(Sourcecfg::delegatedMask());
-        }
-      else
-        {
-          // Child Sourcecfg mask for given id is now non-writable
-          child->csrs_.at(csrn).setMask(0);
-
-          // Parent Sourcecfg mask is now for non-delegated
-          csrs_.at(csrn).setMask(Sourcecfg::nonDelegatedMask());
-        }
-
-      // Interrupt pending and enabled now writable in child if delegated.
-      child->setIeWritable(id, delegated);
-      child->setIpWritable(id, delegated);
-
-      // Interrupt pending and enabled now writable in parent if non-delegated.
-      setIeWritable(id, not delegated);
-      setIpWritable(id, not delegated);
-    }
-
+  // TODO(paul): Any write to a sourcecfg register might (or might not) cause
+  // the corresponding interrupt-pending bit to be set to one if the rectified
+  // input value is high (= 1) under the new source mode
+#if 0
+  // TODO(paul): recalculate rectified input values and update Inclrip<i> CSRs
+  SourceMode mode = sourceMode(id);
+  bool state = aplic_->interruptStates_.at(id);
+  if ((mode == SourceMode::Level0 and not state) or
+      (mode == SourceMode::Level1 and state));
+    writeIp(id, true);
+#endif
 }
 
 
@@ -385,7 +396,7 @@ Domain::defineCsrs()
       if (ix > interruptCount_)
         mask = 0;
       else
-        mask = isRoot() ? Sourcecfg::nonDelegatedMask() : 0;
+        mask = isRoot() ? allOnes : 0;
       std::string name = base + std::to_string(ix);
       CN cn{unsigned(CN::Sourcecfg1) + ix - 1};
       csrAt(cn) = DomainCsr(name, cn, reset, mask);
