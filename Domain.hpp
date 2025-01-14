@@ -232,9 +232,13 @@ namespace TT_APLIC
       : value_(value)
     { }
 
-    /// Mask of writable bits.
-    constexpr static CsrValue mask()
+    /// Mask of writable bits when delivery mode is direct.
+    constexpr static CsrValue directMask()
     { return 0b1111'1111'1111'1100'0000'0000'1111'1111; }
+
+    /// Mask of writable bits when delivery mode is MSI.
+    constexpr static CsrValue msiMask()
+    { return 0b1111'1111'1111'1111'1111'0111'1111'1111; }
 
     CsrValue value_;   // First union variant
 

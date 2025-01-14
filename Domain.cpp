@@ -158,13 +158,22 @@ Domain::write(uint64_t addr, unsigned size, uint64_t value)
         }
       else if (itemIx >= uint64_t(CN::Target1) and itemIx <= uint64_t(CN::Target1023))
         {
+          Target tgt{val};
+          if (tgt.bits_.hart_ >= hartCount_)
+            tgt.bits_.hart_ = 0; // hart index is WLRL
           if (directDelivery())
             {
-              Target tgt{val};
+              tgt.value_ &= Target::directMask();
               if (tgt.bits_.prio_ == 0)
                 tgt.bits_.prio_ = 1;   // Priority bits must not be zero.
-              val = tgt.value_;
             }
+          else
+            {
+              tgt.value_ &= Target::msiMask();
+              // TODO(paul): legalize guest index field
+              // TODO(paul): legalize the EIID field
+            }
+          val = tgt.value_;
         }
       else if (itemIx == uint64_t(CN::Genmsi))
         {
@@ -472,7 +481,10 @@ Domain::defineCsrs()
   base = "target";
   for (unsigned ix = 1; ix <= MaxId; ++ix)
     {
-      mask = ix <= interruptCount_ ? Target::mask() : 0;
+      if (ix > interruptCount_)
+        mask = 0;
+      else
+        mask = isRoot() ? allOnes : 0;
       std::string name = base + std::to_string(ix);
       CN cn = advance(CN::Target1, ix - 1);
       csrAt(cn) = DomainCsr(name, cn, reset, mask);
