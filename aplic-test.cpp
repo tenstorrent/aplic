@@ -23,7 +23,8 @@ test_01_domaincfg()
 {
   unsigned hartCount = 1;
   unsigned interruptCount = 1;
-  Aplic aplic(hartCount, interruptCount);
+  bool autoDeliver = true;
+  Aplic aplic(hartCount, interruptCount, autoDeliver);
 
   uint64_t addr = 0x1000000;
   uint64_t domainSize = 32*1024;
@@ -47,7 +48,8 @@ test_02_sourcecfg()
 {
   unsigned hartCount = 1;
   unsigned interruptCount = 1;
-  Aplic aplic(hartCount, interruptCount);
+  bool autoDeliver = true;
+  Aplic aplic(hartCount, interruptCount, autoDeliver);
 
   uint64_t addr = 0x1000000;
   uint64_t domainSize = 32*1024;

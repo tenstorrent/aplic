@@ -10,6 +10,7 @@
 
 namespace TT_APLIC
 {
+  class Aplic;
 
   /// APLIC domain control and status register enumeration
   enum class CsrNumber : unsigned
@@ -335,9 +336,9 @@ namespace TT_APLIC
     /// Constructor. interruptCount is the largest supported interrupt id and
     /// must be less than or equal to 1023. Size is the number of bytes
     /// occupied by this domain in the memory address space.
-    Domain(const std::string& name, std::shared_ptr<Domain> parent, uint64_t addr, uint64_t size,
+    Domain(Aplic *aplic, const std::string& name, std::shared_ptr<Domain> parent, uint64_t addr, uint64_t size,
            unsigned hartCount, unsigned interruptCount, bool isMachine)
-      : name_(name), addr_(addr), size_(size), hartCount_(hartCount),
+      : aplic_(aplic), name_(name), addr_(addr), size_(size), hartCount_(hartCount),
         interruptCount_(interruptCount), parent_(parent),
         isMachine_(isMachine)
     {
@@ -499,7 +500,7 @@ namespace TT_APLIC
 
     /// Deliver/undeliver interrupt of given source to the associated hart. This
     /// is called when a source status changes.
-    void deliverInterrupt(unsigned id, bool ready);
+    void deliverInterrupt(unsigned id);
 
     /// Add given child to the children of this domain.
     void addChild(std::shared_ptr<Domain> child)
@@ -561,6 +562,8 @@ namespace TT_APLIC
     /// no effect if the interrupt id is not active in this domain. The top id
     /// for the target host will be updated as a side effect.
     bool setInterruptPending(unsigned id, bool flag);
+
+    void updateTopi(unsigned id, bool ready);
 
     /// Set the interrupt enabled bit of the given id. Return true if
     /// successful. Return false if it is not possible to set the bit (see
@@ -682,6 +685,7 @@ namespace TT_APLIC
 
   private:
 
+    Aplic *aplic_; // TODO(paul): use shared_ptr or weak_ptr?
     std::string name_;
     uint64_t addr_ = 0;
     uint64_t size_ = 0;

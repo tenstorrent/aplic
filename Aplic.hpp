@@ -10,6 +10,12 @@
 namespace TT_APLIC
 {
 
+  struct Interrupt
+  {
+    Domain *domain;
+    unsigned id;
+  };
+
   /// Model an advanced platform local interrupt controller
   class Aplic
   {
@@ -17,7 +23,7 @@ namespace TT_APLIC
 
     /// Constructor. interruptCount is the largest supported interrupt id and
     /// must be less than or equal to 1023.
-    Aplic(unsigned hartCount, unsigned interruptCount);
+    Aplic(unsigned hartCount, unsigned interruptCount, bool autoDeliver);
 
     /// Read a memory mapped register associated with this Aplic. Return true
     /// on success. Return false leaving value unmodified if addr is not in the
@@ -40,6 +46,18 @@ namespace TT_APLIC
     /// pointer to created domain or nullptr if we fail to create a domain.
     std::shared_ptr<Domain> createDomain(const std::string& name, std::shared_ptr<Domain> parent,
                                          uint64_t addr, uint64_t size, bool isMachine);
+
+    bool autoDeliveryEnabled() { return autoDeliver_; }
+    void enableAutoDelivery()
+    {
+      for (auto i : undeliveredInterrupts_)
+        i.domain->deliverInterrupt(i.id);
+      autoDeliver_ = true;
+    }
+    void disableAutoDelivery() { autoDeliver_ = false; }
+
+    void enqueueInterrupt(Domain *domain, unsigned id);
+    bool deliverInterrupt(unsigned id);
 
     /// Define a callback function for this Aplic to directly deliver/un-deliver an
     /// interrupt to a hart. When an interrupt becomes active (ready for delivery) or
@@ -90,11 +108,15 @@ namespace TT_APLIC
 
     unsigned hartCount_ = 0;
     unsigned interruptCount_ = 0;
+    bool autoDeliver_ = false;
     std::shared_ptr<Domain> root_ = nullptr;
     std::vector<std::shared_ptr<Domain>> domains_;
 
     // Current state of interrupt sources
     std::vector<bool> interruptStates_;
+
+    // Interrupts ready to be delivered
+    std::vector<Interrupt> undeliveredInterrupts_;
 
     // Callback for direct interrupt delivery.
     std::function<bool(unsigned hartIx, bool machine, bool ip)> deliveryFunc_ = nullptr;

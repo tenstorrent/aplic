@@ -1,4 +1,5 @@
 #include <iostream>
+#include "Aplic.hpp"
 #include "Domain.hpp"
 
 using namespace TT_APLIC;
@@ -172,13 +173,19 @@ Domain::write(uint64_t addr, unsigned size, uint64_t value)
         }
       else if (itemIx == uint64_t(CN::Genmsi))
         {
-          if (not directDelivery() and imsicFunc_)
+          if (not directDelivery())
             {
-              Genmsi genmsi{val};
-              uint64_t imsicAddr = imsicAddress(genmsi.bits_.hart_, 0);
-              uint32_t eiid = genmsi.bits_.eiid_;
-              imsicFunc_(imsicAddr, sizeof(eiid), eiid);
+              CsrValue curr_val = csrs_.at(itemIx).read();
+              Genmsi curr_genmsi{curr_val};
+              if (not curr_genmsi.bits_.busy_)
+                {
+                  Genmsi genmsi{val};
+                  genmsi.bits_.busy_ = 1;
+                  csrs_.at(itemIx).write(genmsi.value_);
+                  aplic_->enqueueInterrupt(this, 0);
+                }
             }
+          return true;
         }
 
       csrs_.at(itemIx).write(val);
@@ -520,12 +527,6 @@ Domain::setSourceState(unsigned id, bool prev, bool state)
   if (isDelegated(id, childIx))
     return children_.at(childIx)->setSourceState(id, prev, state);
 
-  // Determine interrupt target and priority.
-  using CN = CsrNumber;
-  CN ntc = advance(CN::Target1, id - 1);  // Number of target CSR.
-  auto targetVal = csrAt(ntc).read();
-  Target target{targetVal};
-
   SourceMode mode = sourceMode(id);
   if (mode == SourceMode::Detached)
     return true;   // Detached input ignored
@@ -606,63 +607,86 @@ Domain::setInterruptPending(unsigned id, bool pending)
   writeIp(id, pending);
 
   bool ready = enabled and pending;
-  deliverInterrupt(id, ready);
+  if (directDelivery())
+    updateTopi(id, ready);
+  if (interruptEnabled())
+    if (directDelivery() or ready)
+      aplic_->enqueueInterrupt(this, id);
   return true;
 }
 
+void
+Domain::updateTopi(unsigned id, bool ready)
+{
+  if (id == 0 or id > interruptCount_)
+    return;
+
+  using CN = CsrNumber;
+  CN ntc = advance(CN::Target1, id - 1);
+  auto targetVal = csrAt(ntc).read();
+  Target target{targetVal};
+
+  unsigned prio = target.bits_.prio_;
+  unsigned hart = target.bits_.hart_;
+
+  // Update top priority interrupt. Lower priority number wins.
+  // For tie, lower source id wins
+  auto& idc = idcs_.at(hart);
+  IdcTopi topi{idc.topi_};
+  unsigned topPrio = topi.bits_.prio_;
+  if (ready)
+    {
+      if (topPrio == 0 or prio < topPrio or (prio == topPrio and id < topi.bits_.id_))
+        {
+          topi.bits_.prio_ = prio;
+          topi.bits_.id_ = id;
+        }
+    }
+  else if (id == topi.bits_.id_)
+    {
+      // Interrupt that used to determine our top id went away. Re-compute
+      // top id and priority in interrupt delivery control.
+      topi.bits_.prio_ = 0;
+      topi.bits_.id_ = 0;
+      for (unsigned iid = 1; iid <= interruptCount_; ++iid)
+        {
+          CN ntc = advance(CN::Target1, iid - 1);
+          CsrValue targetVal = csrAt(ntc).read();
+          Target target{targetVal};
+          if (target.bits_.hart_ == hart and id != iid)
+            if (isActive(iid) and readIe(iid) and readIp(iid))
+              if (topi.bits_.prio_ == 0 or target.bits_.prio_ < topi.bits_.prio_)
+                {
+                  topi.bits_.prio_ = target.bits_.prio_;
+                  topi.bits_.id_ = iid;
+                }
+        }
+    }
+
+  idc.topi_ = topi.value_;  // Update IDC.
+}
 
 /// Deliver/undeliver interrupt of given source to the associated hart. This is called
 /// when a source status changes.
 void
-Domain::deliverInterrupt(unsigned id, bool ready)
+Domain::deliverInterrupt(unsigned id)
 {
+  std::cerr << "deliverInterrupt(" << id << ")\n";
   using CN = CsrNumber;
 
-  CN ntc = advance(CN::Target1, id - 1);  // Number of target CSR.
-  auto targetVal = csrAt(ntc).read();
-  Target target{targetVal};
+  Target target = {};
+  if (id > 0 and id <= interruptCount_)
+    {
+      CN ntc = advance(CN::Target1, id - 1);  // Number of target CSR.
+      auto targetVal = csrAt(ntc).read();
+      target = Target{targetVal};
+    }
 
   if (directDelivery())
     {
-      unsigned prio = target.bits_.prio_;
       unsigned hart = target.bits_.hart_;
-
-      // Update top priority interrupt. Lower priority number wins.
-      // For tie, lower source id wins
       auto& idc = idcs_.at(hart);
       IdcTopi topi{idc.topi_};
-      unsigned topPrio = topi.bits_.prio_;
-      if (ready)
-        {
-          if (topPrio == 0 or prio < topPrio or (prio == topPrio and id < topi.bits_.id_))
-            {
-              topi.bits_.prio_ = prio;
-              topi.bits_.id_ = id;
-            }
-        }
-      else if (id == topi.bits_.id_)
-        {
-          // Interrupt that used to determine our top id went away. Re-compute
-          // top id and priority in interrupt delivery control.
-          topi.bits_.prio_ = 0;
-          topi.bits_.id_ = 0;
-          for (unsigned iid = 1; iid <= interruptCount_; ++iid)
-            {
-              CN ntc = advance(CN::Target1, iid - 1);
-              CsrValue targetVal = csrAt(ntc).read();
-              Target target{targetVal};
-              if (target.bits_.hart_ == hart and id != iid)
-                if (isActive(iid) and readIe(iid) and readIp(iid))
-                  if (topi.bits_.prio_ == 0 or target.bits_.prio_ < topi.bits_.prio_)
-                    {
-                      topi.bits_.prio_ = target.bits_.prio_;
-                      topi.bits_.id_ = iid;
-                    }
-            }
-        }
-
-      idc.topi_ = topi.value_;  // Update IDC.
-
       if (topi.bits_.id_)
         {
           if ((topi.bits_.prio_ < idc.ithreshold_ or idc.ithreshold_ == 0) and
@@ -670,15 +694,28 @@ Domain::deliverInterrupt(unsigned id, bool ready)
             deliveryFunc_(hart, isMachinePrivilege(), true);
         }
       else
-        deliveryFunc_(hart, isMachinePrivilege(), false);
+        if (deliveryFunc_)
+          deliveryFunc_(hart, isMachinePrivilege(), false);
     }
   else
     {
-      // Deliver to IMSIC
-      if (ready and interruptEnabled() and imsicFunc_)
+      if (id == 0)
+        {
+          Genmsi genmsi{csrAt(CN::Genmsi).read()};
+          if (genmsi.bits_.busy_)
+            {
+              uint64_t imsicAddr = imsicAddress(genmsi.bits_.hart_, 0);
+              if (imsicFunc_)
+                imsicFunc_(imsicAddr, 4, genmsi.bits_.eiid_);
+              genmsi.bits_.busy_ = 0;
+              csrAt(CN::Genmsi).write(genmsi.value_);
+            }
+        }
+      else if (interruptEnabled())
         {
           uint64_t imsicAddr = imsicAddress(target.mbits_.mhart_, target.mbits_.guest_);
-          imsicFunc_(imsicAddr, 4, target.mbits_.eiid_);
+          if (imsicFunc_)
+            imsicFunc_(imsicAddr, 4, target.mbits_.eiid_);
           writeIp(id, false);  // Clear interrupt pending.
         }
     }
@@ -701,7 +738,11 @@ Domain::setInterruptEnabled(unsigned id, bool enabled)
   writeIe(id, enabled);
 
   bool ready = enabled and pending;
-  deliverInterrupt(id, ready);
+  if (directDelivery())
+    updateTopi(id, ready);
+  if (interruptEnabled())
+    if (directDelivery() or ready)
+      aplic_->enqueueInterrupt(this, id);
   return true;
 }
 

@@ -6,8 +6,8 @@
 using namespace TT_APLIC;
 
 
-Aplic::Aplic(unsigned hartCount, unsigned interruptCount)
-  : hartCount_(hartCount), interruptCount_(interruptCount)
+Aplic::Aplic(unsigned hartCount, unsigned interruptCount, bool autoDeliver)
+  : hartCount_(hartCount), interruptCount_(interruptCount), autoDeliver_(autoDeliver)
 {
   interruptStates_.resize(interruptCount+1);
 }
@@ -30,6 +30,13 @@ Aplic::read(uint64_t addr, unsigned size, uint64_t& value)
 bool
 Aplic::write(uint64_t addr, unsigned size, uint64_t value)
 {
+  size_t num_undelivered = undeliveredInterrupts_.size();
+  if (num_undelivered > 0)
+    {
+      std::cerr << "Warning: discarding " << num_undelivered << " undelivered interrupts due to APLIC write\n";
+      undeliveredInterrupts_.clear();
+    }
+
   if ((addr & 3) != 0 or size != 4)
     return false;  // Address must be word aligned. Size must be word.
 
@@ -86,7 +93,7 @@ Aplic::createDomain(const std::string& name, std::shared_ptr<Domain> parent, uin
   if (root_ and not parent)
     return nullptr;   // Cannot have more than one root.
 
-  auto domain = std::make_shared<Domain>(name, parent, addr, size, hartCount_,
+  auto domain = std::make_shared<Domain>(this, name, parent, addr, size, hartCount_,
                                          interruptCount_, isMachine);
 
   domain->setImsicMethod(imsicFunc_);
@@ -101,4 +108,28 @@ Aplic::createDomain(const std::string& name, std::shared_ptr<Domain> parent, uin
     parent->addChild(domain);
 
   return domain;
+}
+
+void
+Aplic::enqueueInterrupt(Domain *domain, unsigned id)
+{
+  if (autoDeliver_)
+    domain->deliverInterrupt(id);
+  else
+    undeliveredInterrupts_.push_back(Interrupt{domain, id});
+}
+
+bool
+Aplic::deliverInterrupt(unsigned id)
+{
+  for (auto it = undeliveredInterrupts_.begin(); it != undeliveredInterrupts_.end(); ++it)
+    {
+      if (it->id == id)
+        {
+          it->domain->deliverInterrupt(it->id);
+          undeliveredInterrupts_.erase(it);
+          return true;
+        }
+    }
+  return false;
 }
