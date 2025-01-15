@@ -243,7 +243,8 @@ Domain::readIdc(uint64_t addr, unsigned size, CsrValue& value)
       if (id == 0)
         {
           idc->iforce_ = 0;
-          deliveryFunc_(idcIx, isMachinePrivilege(), false);
+          if (deliveryFunc_)
+            deliveryFunc_(idcIx, isMachinePrivilege(), false);
         }
       else
         tryClearIp(id);
