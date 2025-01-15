@@ -275,7 +275,7 @@ namespace TT_APLIC
     /// Set value of this CSR to the given value after masking it with
     /// the associated write mask.
     void write(CsrValue value)
-    { value_ = value & mask_; }
+    { value_ = (value_ & ~mask_) | (value & mask_) ; }
 
     /// Return the name of this CSR.
     std::string name() const
