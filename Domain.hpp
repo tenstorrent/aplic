@@ -98,7 +98,7 @@ namespace TT_APLIC
 
     /// Mask of writable bits.
     constexpr static CsrValue mask()
-    { return 0b0000'0000'0000'0000'0000'0001'1000'0101; }
+    { return 0b0000'0000'0000'0000'0000'0001'0000'0101; }
 
     CsrValue value_;    // First variant of union
 
