@@ -67,7 +67,9 @@ Aplic::createDomain(const std::string& name, std::shared_ptr<Domain> parent, uin
   if (size % 4096 != 0)
     return nullptr;
 
-  // TODO: check for overlap with other domains
+  for (auto domain : domains_)
+      if (domain->overlaps(addr, size))
+        return nullptr;
 
   if (not root_ and parent)
     return nullptr;   // First created domain must be root.

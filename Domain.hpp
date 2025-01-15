@@ -350,6 +350,10 @@ namespace TT_APLIC
       assert(size >= IdcOffset + hartCount * 32);
     }
 
+    /// Check for overlap with another region.
+    bool overlaps(uint64_t base, uint64_t size)
+    { return (base < (addr_ + size_)) and (addr_ < (base + size)); }
+
     /// Address check
     bool contains_addr(uint64_t addr)
     { return (addr >= addr_ and addr < (addr_ + size_)); }
