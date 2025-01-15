@@ -11,16 +11,16 @@ override CXXFLAGS += -MMD -MP -std=c++20 $(OFLAGS) -pedantic -Wall -Wextra
 %.o:  %.cpp
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c -o $@ $<
 
-SRC_FILES := Domain.cpp Aplic.cpp aplic-test.cpp
+SRC_FILES := Domain.cpp Aplic.cpp example.cpp
 OBJ_FILES := $(SRC_FILES:.cpp=.o)
 DEP_FILES := $(SRC_FILES:.cpp=.d)
-aplic-test: aplic-test.o Domain.o Aplic.o
+example: example.o Domain.o Aplic.o
 	$(CXX) $(LDFLAGS) $(CPPFLAGS) $(CXXFLAGS) -o $@ $^ -l:libboost_program_options.a -lz
 
 # Include Generated Dependency files if available.
 -include $(DEP_FILES)
 
 clean:
-	$(RM) aplic-test $(OBJ_FILES) $(DEP_FILES)
+	$(RM) example $(OBJ_FILES) $(DEP_FILES)
 
 .PHONY: clean
