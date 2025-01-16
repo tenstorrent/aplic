@@ -27,7 +27,7 @@ main(int, char**)
 
   uint64_t addr = 0x1000000;
   uint64_t domainSize = 32*1024;
-  Aplic aplic(hartCount, interruptCount);
+  Aplic aplic(hartCount, interruptCount, true);
 
   aplic.setDeliveryMethod(callback);
   aplic.setImsicMethod(imsicFunc);
