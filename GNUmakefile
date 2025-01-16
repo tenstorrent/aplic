@@ -17,6 +17,9 @@ DEP_FILES := $(SRC_FILES:.cpp=.d)
 aplic-test: aplic-test.o Domain.o Aplic.o
 	$(CXX) $(LDFLAGS) $(CPPFLAGS) $(CXXFLAGS) -o $@ $^ -l:libboost_program_options.a -lz
 
+example: example.o Domain.o Aplic.o
+	$(CXX) $(LDFLAGS) $(CPPFLAGS) $(CXXFLAGS) -o $@ $^ -l:libboost_program_options.a -lz
+
 # Include Generated Dependency files if available.
 -include $(DEP_FILES)
 

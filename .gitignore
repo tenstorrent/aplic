@@ -1,6 +1,7 @@
 *.d
 *.o
 aplic-test
+example
 bazel-*
 
 # VSCode
