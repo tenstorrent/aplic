@@ -81,43 +81,51 @@
   - claimi
 
 ## 4.5.3: Machine MSI address configuration (MSI Address Regs: mmsiaddrcfg and mmsiaddrcfgh)
-- Write `0x10000000` to `mmsiaddrcfg`; expect MSI writes directed to machine-level interrupt file to be received at the address `0x1000000`.
-- Write `0xFFFFFFFF` to `mmsiaddrcfg`; expect to read `0x0` or trigger an error (invalid address).
-- Write `0x20000000` to `smsiaddrcfg`; expect MSI writes directed to supervisor-level interrupt file to be received at the address `0x2000000`.
-- Write `0xABCDEF00` to both `mmsiaddrcfg` and `smsiaddrcfg`. Send an MSI to `0xABCDEF00` and verify which interrupt file processes the MSI.
-- Write `0x0` to `mmsiaddrcfg` and `0x1` to `mmsiaddrcfgh`; expect MSIs to be routed to `0x100000000`.
-- Write `0xFFFFFFFF` to both `mmsiaddrcfg` and `mmsiaddrcfgh`; expect to read back `0x0` or generate an error.
+- TODO
 
 ## 4.5.13: Set interrupt-pending bit by number, little-endian (setipnum le)
-- Write `0x01` to `setipnum_le`. Expect the corresponding bit in `setip` to be set. 
-- Write `0x00` to `setipnum_le`. Expect the write to be ignored, and no bit is set in `setip`. 
+- Write `0x01` to `setipnum_le`. Expect the corresponding bit in `setip` to be set.
+- Write `0x00` to `setipnum_le`. Expect the write to be ignored, and no bit is set in `setip`.
 - Write `0x800` (invalid identity) to `setipnum_le`. Expect no effect.
 
 ## 4.5.14 Set interrupt-pending bit by number, big-endian (setipnum be)
-- Write `0x01` to `setipnum_be`. Expect the corresponding bit in `setip` to be set. 
-- Write `0x00` to `setipnum_be`. Expect the write to be ignored, and no bit is set in `setip`. 
+- Write `0x01` to `setipnum_be`. Expect the corresponding bit in `setip` to be set.
+- Write `0x00` to `setipnum_be`. Expect the write to be ignored, and no bit is set in `setip`.
 - Write `0x800` (invalid identity) to `setipnum_be`. Expect no effect. 
 
 ## 4.5.16 Interrupt targets (target[1]-target[1023])
-- Write `0x1` to `target` for a source not active in the domain. Expect to read back `0x0`. (inactive sources)
-- Write priority `0x0` to `target` in direct delivery mode. Expect priority `0x1` to be read back. (priority encoding)
-- Write priority `0xFF` (assuming `IPRIOLEN = 8`) to `target`. Expect to read back `0xFF`. (priority encoding)
-- Write a value exceeding `2^IPRIOLEN - 1` (i.e. `0x200`). Expect to read back `0x200 & (2^IPRIOLEN - 1)`.
+- TODO
 
 ## 4.8.1.1 Interrupt delivery enable (idelivery)
-- Write `0x1` to `idelivery`. Confirm interrupts are delivered for pending sources. 
-- Write `0x0` to `idelivery`. Confirm no interrupts are delivered even if pending. 
+- Write `0x1` to `idelivery`. Confirm interrupts are delivered for pending sources.
+- Write `0x0` to `idelivery`. Confirm no interrupts are delivered even if pending.
+- Write `0x1` to `idelivery` for a nonexistent hart. Verify no interrupts are delivered.
 
 ## 4.8.1.2 Interrupt force (iforce)
-- Write `0x1` to `iforce` for source `i`. Expect `setip[i]` to be set to `1`, regardless of other configurations. 
-- Write `0x0` to `iforce` for source `i`. Confirm no change to `setip[i]`. 
+- Write `0x1` to `iforce` for a hart with `idelivery = 1` and `domaincfg.IE = 1`. Verify a spurious interrupt is delivered.
+- Write `0x0` to `iforce` and confirm no spurious interrupt is delivered.
+- Trigger a spurious interrupt by setting `iforce = 1` and verify `claimi` returns `0`.
+- Read `claimi` after a spurious interrupt and confirm `iforce` is cleared to `0`.
+- Write `0x1` to `iforce` for a nonexistent hart. Verify no interrupts are delivered.
 
 ## 4.8.1.3 Interrupt enable threshold (ithreshold)
-- Write `0x5` to `ithreshold`. Trigger interrupts with priorities from `1` to `10`. Expect only interrupts with priorities `6+` to be delivered. 
-- Write `0x0` to `ithreshold`. Confirm all interrupts are delivered. 
+- Write `0x0` to `ithreshold`. Verify all pending and enabled interrupts are delivered.
+- Write `0x5` to `ithreshold`. Verify only interrupts with priority `6+` are delivered.
+- Write `max_priority` (e.g., `2^IPRIOLEN - 1` or `0x200`) to `ithreshold`. Verify no interrupts are delivered.
+- Write `0x1` to `ithreshold` and trigger interrupts with priorities `0` and `2`. Verify only priority `0` is delivered.
+- Set `domaincfg.IE = 0` and `ithreshold = 0`. Verify no interrupts are delivered.
 
 ## 4.8.1.4 Top interrupt (topi)
-- Set multiple pending interrupts with priorities `3`, `5`, and `7`. Read `topi`. Expect the interrupt with priority `3` (highest) to be reported.
+- Trigger multiple interrupts with priorities `3`, `5`, and `7`. Read `topi`. Verify it returns the interrupt with priority `3` (highest).
+- Ensure no interrupts are pending and read `topi`. Verify it returns `0`.
+- Set `ithreshold = 5`. Trigger interrupts with priorities `4` and `6`. Verify `topi` only returns the interrupt with priority `4`.
+- Verify `topi` always reads `0` for a nonexistent hart.
+- Attempt to write to `topi`. Verify the write is ignored.
 
 ## 4.8.1.5 Claim top interrupt (claimi)
-- Set interrupt `5` as pending. Read `claimi`. Expect `5` to be reported and removed from `setip`.
+- Trigger multiple interrupts and read `claimi`. Verify it returns the same value as `topi`.
+- Confirm the pending bit for the claimed interrupt is cleared.
+- Trigger a spurious interrupt by setting `iforce = 1`. Read `claimi` and verify it returns `0`.
+- Ensure no interrupts are pending and read `claimi`. Verify it returns `0`.
+- Attempt to write to `claimi`. Verify the write is ignored.
+- Set `ithreshold = 5`. Trigger interrupts with priorities `4` and `6`. Read `claimi`. Verify it only claims the interrupt with priority `4`.
