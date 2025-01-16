@@ -79,3 +79,45 @@
   - ithreshold
   - topi
   - claimi
+
+## 4.5.3: Machine MSI address configuration (MSI Address Regs: mmsiaddrcfg and mmsiaddrcfgh)
+- Write `0x10000000` to `mmsiaddrcfg`; expect MSI writes directed to machine-level interrupt file to be received at the address `0x1000000`.
+- Write `0xFFFFFFFF` to `mmsiaddrcfg`; expect to read `0x0` or trigger an error (invalid address).
+- Write `0x20000000` to `smsiaddrcfg`; expect MSI writes directed to supervisor-level interrupt file to be received at the address `0x2000000`.
+- Write `0xABCDEF00` to both `mmsiaddrcfg` and `smsiaddrcfg`. Send an MSI to `0xABCDEF00` and verify which interrupt file processes the MSI.
+- Write `0x0` to `mmsiaddrcfg` and `0x1` to `mmsiaddrcfgh`; expect MSIs to be routed to `0x100000000`.
+- Write `0xFFFFFFFF` to both `mmsiaddrcfg` and `mmsiaddrcfgh`; expect to read back `0x0` or generate an error.
+
+## 4.5.13: Set interrupt-pending bit by number, little-endian (setipnum le)
+- Write `0x01` to `setipnum_le`. Expect the corresponding bit in `setip` to be set. 
+- Write `0x00` to `setipnum_le`. Expect the write to be ignored, and no bit is set in `setip`. 
+- Write `0x800` (invalid identity) to `setipnum_le`. Expect no effect.
+
+## 4.5.14 Set interrupt-pending bit by number, big-endian (setipnum be)
+- Write `0x01` to `setipnum_be`. Expect the corresponding bit in `setip` to be set. 
+- Write `0x00` to `setipnum_be`. Expect the write to be ignored, and no bit is set in `setip`. 
+- Write `0x800` (invalid identity) to `setipnum_be`. Expect no effect. 
+
+## 4.5.16 Interrupt targets (target[1]-target[1023])
+- Write `0x1` to `target` for a source not active in the domain. Expect to read back `0x0`. (inactive sources)
+- Write priority `0x0` to `target` in direct delivery mode. Expect priority `0x1` to be read back. (priority encoding)
+- Write priority `0xFF` (assuming `IPRIOLEN = 8`) to `target`. Expect to read back `0xFF`. (priority encoding)
+- Write a value exceeding `2^IPRIOLEN - 1` (i.e. `0x200`). Expect to read back `0x200 & (2^IPRIOLEN - 1)`.
+
+## 4.8.1.1 Interrupt delivery enable (idelivery)
+- Write `0x1` to `idelivery`. Confirm interrupts are delivered for pending sources. 
+- Write `0x0` to `idelivery`. Confirm no interrupts are delivered even if pending. 
+
+## 4.8.1.2 Interrupt force (iforce)
+- Write `0x1` to `iforce` for source `i`. Expect `setip[i]` to be set to `1`, regardless of other configurations. 
+- Write `0x0` to `iforce` for source `i`. Confirm no change to `setip[i]`. 
+
+## 4.8.1.3 Interrupt enable threshold (ithreshold)
+- Write `0x5` to `ithreshold`. Trigger interrupts with priorities from `1` to `10`. Expect only interrupts with priorities `6+` to be delivered. 
+- Write `0x0` to `ithreshold`. Confirm all interrupts are delivered. 
+
+## 4.8.1.4 Top interrupt (topi)
+- Set multiple pending interrupts with priorities `3`, `5`, and `7`. Read `topi`. Expect the interrupt with priority `3` (highest) to be reported.
+
+## 4.8.1.5 Claim top interrupt (claimi)
+- Set interrupt `5` as pending. Read `claimi`. Expect `5` to be reported and removed from `setip`.
