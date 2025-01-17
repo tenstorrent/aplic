@@ -23,6 +23,9 @@ namespace TT_APLIC
       Smsiaddrcfg,
       Smsiaddrcfgh,
       Setip0 = 0x1c00 >> 2,
+      Setip3 = Setip0 + 3,
+      Setip5 = Setip0 + 5,
+      Setip7 = Setip0 + 7,
       Setip31 = Setip0 + 31,
       Setipnum = 0x1cdc >> 2,
       Inclrip0 = 0x1d00 >> 2,
@@ -38,7 +41,17 @@ namespace TT_APLIC
       Setipnumbe,
       Genmsi = 0x3000 >> 2,
       Target1,
-      Target1023 = Target1 + 1022
+      Target3 = Target1 + 2,
+      Target4 = Target1 + 3,
+      Target5 = Target1 + 4,
+      Target6 = Target1 + 5,
+      Target7 = Target1 + 6,
+      Target1023 = Target1 + 1022,
+      Idelivery = 0x4000 >> 2,
+      Iforce = Idelivery + 1,
+      Ithreshold = Idelivery + 2,
+      Topi = Idelivery + 6,
+      Claimi = Idelivery + 7
     };
 
 
