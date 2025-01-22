@@ -110,7 +110,7 @@
 
 ## 4.8.1.3 Interrupt enable threshold (ithreshold)
 - Write `0x0` to `ithreshold`. Verify all pending and enabled interrupts are delivered.
-- Write `0x5` to `ithreshold`. Verify only interrupts with priority `6+` are delivered.
+- Write `0x5` to `ithreshold`. Verify only interrupts with priority `5-` are delivered.
 - Write `max_priority` (e.g., `2^IPRIOLEN - 1` or `0x200`) to `ithreshold`. Verify no interrupts are delivered.
 - Write `0x1` to `ithreshold` and trigger interrupts with priorities `0` and `2`. Verify only priority `0` is delivered.
 - Set `domaincfg.IE = 0` and `ithreshold = 0`. Verify no interrupts are delivered.
