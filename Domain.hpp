@@ -41,6 +41,7 @@ namespace TT_APLIC
       Setipnumbe,
       Genmsi = 0x3000 >> 2,
       Target1,
+      Target2 = Target1 + 1,
       Target3 = Target1 + 2,
       Target4 = Target1 + 3,
       Target5 = Target1 + 4,
