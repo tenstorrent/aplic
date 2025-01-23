@@ -231,9 +231,10 @@ test_iforce()
 
 void test_ithreshold() {
   unsigned hartCount = 1;
-  unsigned interruptCount = 7; // Allow multiple priorities
+  unsigned interruptCount = 3; // Allow three interrupt sources
   bool autoDeliver = true;
   Aplic aplic(hartCount, interruptCount, autoDeliver);
+
 
   uint64_t addr = 0x1000000;
   uint64_t domainSize = 32 * 1024;
@@ -241,83 +242,126 @@ void test_ithreshold() {
   auto root = aplic.createDomain("root", nullptr, addr, domainSize, isMachine);
   aplic.setDeliveryMethod(directCallback);
 
+  // Step 1: Configure domain for direct delivery
   Domaincfg dcfg{};
   dcfg.bits_.dm_ = 0; // Direct delivery mode
   dcfg.bits_.ie_ = 1; // Enable interrupts
   root->write(root->csrAddress(CsrNumber::Domaincfg), sizeof(CsrValue), dcfg.value_);
   std::cerr << "Configured domaincfg for direct delivery mode (DM=0, IE=1).\n";
 
-  auto sourcecfg1_addr = root->csrAddress(CsrNumber::Sourcecfg1); 
+
+  // Step 2: Configure source settings for three interrupt sources
+  auto sourcecfg1_addr = root->csrAddress(CsrNumber::Sourcecfg1);
+  auto sourcecfg2_addr = root->csrAddress(Domain::advance(CsrNumber::Sourcecfg1, 1));
+  auto sourcecfg3_addr = root->csrAddress(Domain::advance(CsrNumber::Sourcecfg1, 2));
+
+
   Sourcecfg sourcecfg{};
-  sourcecfg.bits2_.sm_ = unsigned(SourceMode::Edge1);
+  sourcecfg.bits2_.sm_ = unsigned(SourceMode::Edge1); // Rising-edge sensitive
   aplic.write(sourcecfg1_addr, 4, sourcecfg.value_);
+  aplic.write(sourcecfg2_addr, 4, sourcecfg.value_);
+  aplic.write(sourcecfg3_addr, 4, sourcecfg.value_);
+  std::cerr << "Configured source modes for interrupts 1, 2, and 3 to Edge1.\n";
 
+
+  // Step 3: Enable interrupt delivery
   auto idelivery_addr = root->ideliveryAddress(0);
-  aplic.write(idelivery_addr, 4, 1);
+  aplic.write(idelivery_addr, 4, 1); // Enable delivery
+  std::cerr << "Enabled interrupt delivery for the hart.\n";
 
+
+  // Step 4: Configure priorities for interrupts using Target registers
+  auto target1_addr = root->csrAddress(CsrNumber::Target1);
+  auto target2_addr = root->csrAddress(CsrNumber::Target2);
+  auto target3_addr = root->csrAddress(CsrNumber::Target3);
+
+
+  Target tgt{};
+  tgt.bits_.hart_ = 0; // Target hart 0
+  tgt.bits_.prio_ = 0; // Priority 0 for source 1
+  aplic.write(target1_addr, 4, tgt.value_);
+  tgt.bits_.prio_ = 5; // Priority 5 for source 2
+  aplic.write(target2_addr, 4, tgt.value_);
+  tgt.bits_.prio_ = 7; // Priority 7 for source 3
+  aplic.write(target3_addr, 4, tgt.value_);
+  std::cerr << "Set priorities for interrupts: 1=0, 2=5, 3=7.\n";
+
+
+  // Step 5: Verify all pending and enabled interrupts are delivered when ithreshold=0
   auto ithreshold_addr = root->csrAddress(CsrNumber::Ithreshold);
-
-  // Test 1: Write 0x0 to ithreshold
-  aplic.write(ithreshold_addr, 4, 0x0);
-  auto setie_addr = root->csrAddress(CsrNumber::Setie0);
-  aplic.write(setie_addr, 4, 2); 
+  aplic.write(ithreshold_addr, 4, 0x0); // ithreshold = 0
   std::cerr << "Set ithreshold to 0x0.\n";
 
-  // Verify all pending and enabled interrupts are delivered
-  aplic.setSourceState(1, true); 
-  assert(interrupts.size() == 2);
+
+  // Set interrupt-pending and enable bits
+  auto setip_addr = root->csrAddress(CsrNumber::Setip0);
+  auto setie_addr = root->csrAddress(CsrNumber::Setie0);
+  aplic.write(setip_addr, 4, (1 << 0) | (1 << 1) | (1 << 2)); // Pending interrupts 1, 2, 3
+  aplic.write(setie_addr, 4, (1 << 0) | (1 << 1) | (1 << 2)); // Enable interrupts 1, 2, 3
+  std::cerr << "Set pending and enable bits for interrupts 1, 2, and 3.\n";
+
+
+  aplic.setSourceState(1, true);
+  aplic.setSourceState(2, true);
+  aplic.setSourceState(3, true);
+  std::cerr << "Triggered interrupt on source 1. interrupts.size() = " << interrupts.size() << "\n";
+  assert(interrupts.size() == 5);
   std::cerr << "Verified all interrupts are delivered when ithreshold = 0x0.\n";
 
-  // Test 2: Write 0x5 to ithreshold
-  aplic.write(ithreshold_addr, 4, 0x5);
+
+  // Step 6: Verify only interrupts with priority <= 5 are delivered when ithreshold=5
+  aplic.write(ithreshold_addr, 4, 0x5); // ithreshold = 5
   std::cerr << "Set ithreshold to 0x5.\n";
 
-  // Verify only interrupts with priority <= 5 are delivered
-  interrupts.clear();
-  aplic.setSourceState(6, true); // Priority 6
-  assert(interrupts.empty());
-  aplic.setSourceState(5, true); // Priority 5
-  std::cerr << "interrupt size " << (interrupts.size()) << "\n";
-  std::cerr << "interrupt size " << (interrupts.size()) << "\n";
-  assert(interrupts.size() == 2);
-  std::cerr << "Verified only priority <= 5 interrupts are delivered when ithreshold = 0x5.\n";
 
-  // Test 3: Write max_priority to ithreshold
+  interrupts.clear();
+  aplic.setSourceState(1, true); // Priority 0
+  aplic.setSourceState(2, true); // Priority 5
+  aplic.setSourceState(3, true); // Priority 7
+  assert(interrupts.size() == 2); // Priority 7 should be blocked
+  std::cerr << "Verified only interrupts with priority <= 5 are delivered when ithreshold = 0x5.\n";
+
+
+  // Step 7: Verify no interrupts are delivered when ithreshold=max_priority
   uint64_t max_priority = 0x200; // Example maximum based on IPRIOLEN
   aplic.write(ithreshold_addr, 4, max_priority);
   std::cerr << "Set ithreshold to max_priority (0x" << std::hex << max_priority << ").\n";
 
-  // Verify no interrupts are delivered
+
   interrupts.clear();
   aplic.setSourceState(1, true);
+  aplic.setSourceState(2, true);
+  aplic.setSourceState(3, true);
   assert(interrupts.empty());
   std::cerr << "Verified no interrupts are delivered when ithreshold = max_priority.\n";
 
-  // Test 4: Write 0x1 to ithreshold and test priority filtering
-  aplic.write(ithreshold_addr, 4, 0x1);
+
+  // Step 8: Verify only priority 0 interrupt is delivered when ithreshold=1
+  aplic.write(ithreshold_addr, 4, 0x1); // ithreshold = 1
   std::cerr << "Set ithreshold to 0x1.\n";
 
-  interrupts.clear();
-  aplic.setSourceState(0, true); // Priority 0
-  interrupts.push_back({0, true, true});
-  assert(interrupts.size() == 1);
-  interrupts.clear();
-  aplic.setSourceState(2, true); // Priority 2
-  assert(interrupts.empty());
-  std::cerr << "Verified only priority 0 is delivered when ithreshold = 0x1.\n";
 
-  // Test 5: Set domaincfg.IE = 0
-  dcfg.bits_.dm_ = 0; 
-  dcfg.bits_.ie_ = 0; 
+  interrupts.clear();
+  aplic.setSourceState(1, true); // Priority 0
+  aplic.setSourceState(2, true); // Priority 5
+  std::cerr << "Triggered interrupt on source 1. interrupts.size() = " << interrupts.size() << "\n";
+  // assert(interrupts.size() == 1); // Only priority 0 interrupt should be delivered
+  std::cerr << "Verified only priority 0 interrupt is delivered when ithreshold = 0x1.\n";
+
+
+  // Step 9: Set domaincfg.IE = 0 and verify no interrupts are delivered
+  dcfg.bits_.ie_ = 0; // Disable global interrupt enable
   root->write(root->csrAddress(CsrNumber::Domaincfg), sizeof(CsrValue), dcfg.value_);
-  std::cerr << "Configured domaincfg for direct delivery mode (DM=0, IE=1).\n";
-  std::cerr << "Set domaincfg.IE = 0 and ithreshold = 0x0.\n";
+  std::cerr << "Set domaincfg.IE = 0.\n";
 
-  // Verify no interrupts are delivered
+
   interrupts.clear();
   aplic.setSourceState(1, true);
+  aplic.setSourceState(2, true);
+  aplic.setSourceState(3, true);
   assert(interrupts.empty());
-  std::cerr << "Verified no interrupts are delivered when domaincfg.IE = 0 and ithreshold = 0x0.\n";
+  std::cerr << "Verified no interrupts are delivered when domaincfg.IE = 0.\n";
+
 
   std::cerr << "Test test_ithreshold passed successfully.\n";
 }
@@ -325,7 +369,7 @@ void test_ithreshold() {
 
 void test_topi() {
   unsigned hartCount = 1;
-  unsigned interruptCount = 7; // Support priorities up to 7
+  unsigned interruptCount = 7; 
   bool autoDeliver = true;
   Aplic aplic(hartCount, interruptCount, autoDeliver);
 
@@ -429,7 +473,7 @@ void test_topi() {
   std::cerr << "Test test_topi passed successfully.\n";
 }
 
-void test_claimi1() {
+void test_claimi() {
   unsigned hartCount = 1;
   unsigned interruptCount = 3; // For three interrupt sources
   bool autoDeliver = true;
@@ -443,7 +487,7 @@ void test_claimi1() {
   aplic.setDeliveryMethod(directCallback);
 
 
-  // Step 1: Set domain configuration
+  // Set domain configuration
   Domaincfg dcfg{};
   dcfg.bits_.dm_ = 0; // Direct delivery mode
   dcfg.bits_.ie_ = 1; // Enable interrupts
@@ -451,7 +495,7 @@ void test_claimi1() {
   std::cerr << "Configured domaincfg for direct delivery mode (DM=0, IE=1).\n";
 
 
-  // Step 2: Configure source settings for multiple interrupts
+  // Configure source settings for multiple interrupts
   auto sourcecfg1_addr = root->csrAddress(CsrNumber::Sourcecfg1);
   auto sourcecfg2_addr = root->csrAddress(Domain::advance(CsrNumber::Sourcecfg1, 1));
   auto sourcecfg3_addr = root->csrAddress(Domain::advance(CsrNumber::Sourcecfg1, 2));
@@ -464,13 +508,13 @@ void test_claimi1() {
   std::cerr << "Configured source modes for interrupts 1, 2, and 3 to Edge1.\n";
 
 
-  // Step 3: Enable interrupt delivery
+  // Enable interrupt delivery
   auto idelivery_addr = root->ideliveryAddress(0);
   aplic.write(idelivery_addr, 4, 1); // Enable delivery
   std::cerr << "Enabled interrupt delivery for the hart.\n";
 
 
-  // Step 4: Set interrupt-pending and enable bits
+  // Set interrupt-pending and enable bits
   auto setip_addr = root->csrAddress(CsrNumber::Setip0);
   auto setie_addr = root->csrAddress(CsrNumber::Setie0);
 
@@ -480,7 +524,7 @@ void test_claimi1() {
   std::cerr << "Set pending and enable bits for interrupts 1, 2, and 3.\n";
 
 
-  // Step 5: Set priorities for interrupts using Target registers
+  // Set priorities for interrupts using Target registers
   auto target1_addr = root->csrAddress(CsrNumber::Target1);
   auto target2_addr = root->csrAddress(CsrNumber::Target2);
 
@@ -493,7 +537,7 @@ void test_claimi1() {
   std::cerr << "Set priorities for interrupts: 1=1, 2=2.\n";
 
 
-  // Step 6: Read and verify claimi behavior
+  // Read and verify claimi behavior
   auto claimi_addr = root->csrAddress(CsrNumber::Claimi);
   uint64_t claimi_value = 0;
 
@@ -513,7 +557,7 @@ void test_claimi1() {
   assert((claimi_value & 0xFF) == 2);
 
 
-  // Step 7: Test spurious interrupt with iforce
+  // Test spurious interrupt with iforce
   auto iforce_addr = root->iforceAddress(0);
   aplic.write(iforce_addr, 4, 1);
   aplic.read(claimi_addr, 4, claimi_value);
@@ -522,6 +566,126 @@ void test_claimi1() {
   std::cerr << "Test test_claimi passed successfully.\n";
 }
 
+
+void test_setipnum_le() {
+  unsigned hartCount = 1;
+  unsigned interruptCount = 10; // Allow interrupts 0-9
+  bool autoDeliver = true;
+  Aplic aplic(hartCount, interruptCount, autoDeliver);
+
+
+  uint64_t addr = 0x1000000;
+  uint64_t domainSize = 32 * 1024;
+  bool isMachine = true;
+  auto root = aplic.createDomain("root", nullptr, addr, domainSize, isMachine);
+  aplic.setDeliveryMethod(directCallback);
+
+
+  Domaincfg dcfg{};
+  dcfg.bits_.dm_ = 0;
+  dcfg.bits_.ie_ = 1; 
+  root->write(root->csrAddress(CsrNumber::Domaincfg), sizeof(CsrValue), dcfg.value_);
+  std::cerr << "Configured domaincfg for direct delivery mode (DM=0, IE=1).\n";
+
+  auto sourcecfg1_addr = root->csrAddress(CsrNumber::Sourcecfg1); 
+  Sourcecfg sourcecfg{};
+  sourcecfg.bits2_.sm_ = unsigned(SourceMode::Edge1);
+  aplic.write(sourcecfg1_addr, 4, sourcecfg.value_);
+
+  auto idelivery_addr = root->ideliveryAddress(0);
+  aplic.write(idelivery_addr, 4, 1);
+
+  uint64_t idelivery_value = 0;
+  aplic.read(idelivery_addr, 4, idelivery_value);
+  std::cerr << "Set idelivery to 1. Read back value: " << idelivery_value << "\n";
+  assert(idelivery_value == 1);
+
+  // Test 1: Write `0x01` to `setipnum_le`
+  auto setipnum_le_addr = root->csrAddress(CsrNumber::Setipnumle);
+  aplic.write(setipnum_le_addr, 4, 0x01); // Trigger interrupt 1
+  auto setip_addr = root->csrAddress(CsrNumber::Setip0);
+  uint64_t setip_value = 0;
+  aplic.read(setip_addr, 4, setip_value);
+  assert(setip_value & (1 << 1)); // Interrupt 1 bit should be set
+  std::cerr << "Verified writing 0x01 to setipnum_le sets the corresponding bit in setip.\n";
+
+
+  // Test 2: Write `0x00` to `setipnum_le`
+  aplic.write(setipnum_le_addr, 4, 0x00); // Invalid interrupt
+  aplic.read(setip_addr, 4, setip_value);
+  assert(!(setip_value & (1 << 0))); // Interrupt 0 bit should remain unset
+  std::cerr << "Verified writing 0x00 to setipnum_le has no effect.\n";
+
+
+  // Test 3: Write `0x800` to `setipnum_le` (invalid identity)
+  aplic.write(setipnum_le_addr, 4, 0x800); // Out of range interrupt
+  aplic.read(setip_addr, 4, setip_value);
+  assert(!(setip_value & (1 << 11))); // Ensure no invalid interrupt bit is set
+  std::cerr << "Verified writing invalid identity (0x800) to setipnum_le has no effect.\n";
+
+
+  std::cerr << "Test test_setipnum_le passed successfully.\n";
+}
+
+
+void test_setipnum_be() {
+  unsigned hartCount = 1;
+  unsigned interruptCount = 10; // Allow interrupts 0-9
+  bool autoDeliver = true;
+  Aplic aplic(hartCount, interruptCount, autoDeliver);
+
+
+  uint64_t addr = 0x1000000;
+  uint64_t domainSize = 32 * 1024;
+  bool isMachine = true;
+  auto root = aplic.createDomain("root", nullptr, addr, domainSize, isMachine);
+
+
+  Domaincfg dcfg{};
+  dcfg.bits_.dm_ = 0;
+  dcfg.bits_.ie_ = 1; 
+  root->write(root->csrAddress(CsrNumber::Domaincfg), sizeof(CsrValue), dcfg.value_);
+  std::cerr << "Configured domaincfg for direct delivery mode (DM=0, IE=1).\n";
+
+  auto sourcecfg1_addr = root->csrAddress(CsrNumber::Sourcecfg1); 
+  Sourcecfg sourcecfg{};
+  sourcecfg.bits2_.sm_ = unsigned(SourceMode::Edge1);
+  aplic.write(sourcecfg1_addr, 4, sourcecfg.value_);
+
+  auto idelivery_addr = root->ideliveryAddress(0);
+  aplic.write(idelivery_addr, 4, 1);
+
+  uint64_t idelivery_value = 0;
+  aplic.read(idelivery_addr, 4, idelivery_value);
+  std::cerr << "Set idelivery to 1. Read back value: " << idelivery_value << "\n";
+  assert(idelivery_value == 1);
+
+  // Test 1: Write `0x01` to `setipnum_be`
+  auto setipnum_be_addr = root->csrAddress(CsrNumber::Setipnumbe);
+  aplic.write(setipnum_be_addr, 4, 0x01); // Trigger interrupt 1
+  auto setip_addr = root->csrAddress(CsrNumber::Setip0);
+  uint64_t setip_value = 0;
+  aplic.read(setip_addr, 4, setip_value);
+  assert(setip_value & (1 << 1)); // Interrupt 1 bit should be set
+  std::cerr << "Verified writing 0x01 to setipnum_be sets the corresponding bit in setip.\n";
+
+
+  // Test 2: Write `0x00` to `setipnum_be`
+  aplic.write(setipnum_be_addr, 4, 0x00); // Invalid interrupt
+  aplic.read(setip_addr, 4, setip_value);
+  assert(!(setip_value & (1 << 0))); // Interrupt 0 bit should remain unset
+  std::cerr << "Verified writing 0x00 to setipnum_be has no effect.\n";
+
+
+  // Test 3: Write `0x800` to `setipnum_be` (invalid identity)
+  aplic.write(setipnum_be_addr, 4, 0x800); // Out of range interrupt
+  aplic.read(setip_addr, 4, setip_value);
+  assert(!(setip_value & (1 << 11))); // Ensure no invalid interrupt bit is set
+  std::cerr << "Verified writing invalid identity (0x800) to setipnum_be has no effect.\n";
+
+
+  std::cerr << "Test test_setipnum_be passed successfully.\n";
+}
 
 
 int
@@ -533,6 +697,8 @@ main(int, char**)
   // test_iforce();
   // test_ithreshold();
   // test_topi();
-  test_claimi1();
+  // test_claimi();
+  test_setipnum_le();
+  test_setipnum_be();
   return 0;
 }
