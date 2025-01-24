@@ -220,5 +220,14 @@ main(int, char**)
   std::cerr << "Source 3 high\n";
   aplic.setSourceState(3, true);
 
+
+  // Target registers should be read-only zero for inactive sources.
+  Sourcecfg srccfg{0};
+  aplic.read (child->csrAddress(Domain::advance(CsrNumber::Target1, 1)), sizeof(CsrValue), value);
+  std::cout << "target value: " << std::hex << value << std::endl;
+  srccfg.bits2_.sm_ = unsigned(SourceMode::Inactive);
+  aplic.write(child->csrAddress(Domain::advance(CsrNumber::Sourcecfg1, 1)), sizeof(CsrValue), srccfg.value_);
+  aplic.read (child->csrAddress(Domain::advance(CsrNumber::Target1   , 1)), sizeof(CsrValue), value);
+  std::cout << "target value: "    << std::hex << value << ". (This should be 0.)" << std::endl;
   return 0;
 }
