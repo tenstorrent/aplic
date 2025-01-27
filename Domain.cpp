@@ -32,8 +32,11 @@ Domain::read(uint64_t addr, unsigned size, uint64_t& value)
         {
           auto root = rootDomain();
           bool rootLocked = (root->csrAt(CN::Mmsiaddrcfgh).read() >> 31) & 1;
-          if (rootLocked or not isRoot())
+          if (not isMachinePrivilege()) {
+            val = 0;
+          } else if (rootLocked or not isRoot()) {
             val = ix == uint64_t(CN::Mmsiaddrcfgh) ? 0x80000000 : 0;
+          }
         }
       else if (ix == uint64_t(CN::Genmsi))
         {
