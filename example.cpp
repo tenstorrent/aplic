@@ -229,5 +229,15 @@ main(int, char**)
   aplic.write(child->csrAddress(Domain::advance(CsrNumber::Sourcecfg1, 1)), sizeof(CsrValue), srccfg.value_);
   aplic.read (child->csrAddress(Domain::advance(CsrNumber::Target1   , 1)), sizeof(CsrValue), value);
   std::cout << "target value: "    << std::hex << value << ". (This should be 0.)" << std::endl;
+
+  value = 0;
+  aplic.read(child->csrAddress(CsrNumber::Mmsiaddrcfg ), sizeof(CsrValue), value);
+  std::cout << "mmsiaddrcfg  read value in child domain: " << std::hex << value << ". (This should be 0.)" << std::endl;
+  aplic.read(child->csrAddress(CsrNumber::Mmsiaddrcfgh), sizeof(CsrValue), value);
+  std::cout << "mmsiaddrcfgh read value in child domain: " << std::hex << value << ". (This should be 0.)" << std::endl;
+  aplic.read(child->csrAddress(CsrNumber::Smsiaddrcfg ), sizeof(CsrValue), value);
+  std::cout << "smsiaddrcfg  read value in child domain: " << std::hex << value << ". (This should be 0.)" << std::endl;
+  aplic.read(child->csrAddress(CsrNumber::Smsiaddrcfgh), sizeof(CsrValue), value);
+  std::cout << "smsiaddrcfgh read value in child domain: " << std::hex << value << ". (This should be 0.)" << std::endl;
   return 0;
 }
