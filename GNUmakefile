@@ -11,7 +11,7 @@ override CXXFLAGS += -MMD -MP -std=c++20 $(OFLAGS) -pedantic -Wall -Wextra
 %.o:  %.cpp
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c -o $@ $<
 
-SRC_FILES := Domain.cpp Aplic.cpp aplic-test.cpp
+SRC_FILES := Domain.cpp Aplic.cpp aplic-test.cpp example.cpp
 OBJ_FILES := $(SRC_FILES:.cpp=.o)
 DEP_FILES := $(SRC_FILES:.cpp=.d)
 aplic-test: aplic-test.o Domain.o Aplic.o
