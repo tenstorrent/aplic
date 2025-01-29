@@ -19,10 +19,8 @@ bool directCallback(unsigned hartIx, bool mPrivilege, bool state)
   std::cerr << "Delivering interrupt hart=" << hartIx << " privilege="
             << (mPrivilege? "machine" : "supervisor")
             << " interrupt-state=" << (state? "on" : "off") << '\n';
-  std::cerr << "STATE" << state << "\n";
   interrupts.push_back({hartIx, mPrivilege, state});
   interruptStateMap[hartIx] = state;
-  std::cerr << "hartID " << interruptStateMap[hartIx] << "state " << state << "\n";
   return true;
 }
 
