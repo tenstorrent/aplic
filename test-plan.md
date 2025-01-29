@@ -81,7 +81,26 @@
   - claimi
 
 ## 4.5.3: Machine MSI address configuration (MSI Address Regs: mmsiaddrcfg and mmsiaddrcfgh)
-- TODO
+- Write valid `Base PPN`, `HHXS`, `LHXS`, `HHXW`, and `LHXW` values to `mmsiaddrcfg` and `mmsiaddrcfgh` in the root domain.
+- Read back the registers and verify the values match.
+- Set the `L` (lock) bit in `mmsiaddrcfgh`.
+- Verify that further writes to `mmsiaddrcfg` and `mmsiaddrcfgh` are ignored.
+- Confirm the registers remain unchanged.
+- Write invalid values exceeding WARL constraints to `mmsiaddrcfg` and `mmsiaddrcfgh`.
+- Read the registers and verify only valid bits are stored.
+- Configure `mmsiaddrcfg` and `mmsiaddrcfgh` for specific harts.
+- Trigger an MSI and verify the calculated address matches the expected value based on the configuration.
+- Perform a system reset.
+- Verify that writable fields return to default values, and the `L` bit state is as specified by the implementation.
+
+## 4.5.4: Supervisor MSI Address Configuration (smsiaddrcfg and smsiaddrcfgh)
+- Write valid `Base PPN` and `LHXS` values to `smsiaddrcfg` and `smsiaddrcfgh` in the root domain.
+- Read back the registers and verify the values match.
+- Attempt to write to `smsiaddrcfg` and `smsiaddrcfgh` in non-root domains. Verify these registers are read-only or reflect the root domain configuration.
+- Set the `L` (lock) bit in `mmsiaddrcfgh`. Verify that `smsiaddrcfg` and `smsiaddrcfgh` are also locked and further writes are ignored.
+- Write invalid values exceeding WARL constraints to `smsiaddrcfg` and `smsiaddrcfgh`.Read the registers and verify only valid bits are stored.
+- Configure `smsiaddrcfg` and `smsiaddrcfgh` for specific harts and guests.
+- Trigger an MSI in the supervisor-level domain and verify the MSI is sent to the expected IMSIC address.
 
 ## 4.5.13: Set interrupt-pending bit by number, little-endian (setipnum le)
 - Write `0x01` to `setipnum_le`. Expect the corresponding bit in `setip` to be set.
@@ -94,7 +113,21 @@
 - Write `0x800` (invalid identity) to `setipnum_be`. Expect no effect. 
 
 ## 4.5.16 Interrupt targets (target[1]-target[1023])
-- TODO
+- Verify the interrupt is delivered to the correct hart with the specified priority.
+- Configure valid `Hart Index`, `Guest Index`, and `EIID` in a `target` register for an active interrupt source.
+- Verify the MSI is sent to the correct hart, guest, and interrupt identity.
+- Write invalid values for `Hart Index`, `Guest Index`, or `EIID`.
+- Read back the register and confirm it ignores the invalid write.
+- Change `domaincfg.DM` from MSI delivery mode to direct delivery mode.
+- Verify that all active target registers obtain unspecified values.
+- Write priority number `0` to `target`; verify it is adjusted to priority `1`.
+- Write a priority number exceeding `2^IPRIOLEN - 1` and verify the register stores `(value & (2^IPRIOLEN - 1))`.
+- Configure multiple interrupts with equal priority and confirm the lowest source number takes precedence.
+- Configure overlapping `Guest Indices` in MSI delivery mode.
+- Verify that MSIs are routed to the correct guest files based on configuration.
+- Lock the MSI address configuration using `mmsiaddrcfgh.L`.
+- Verify that further writes to the `target` registers are ignored and the values remain unchanged.
+
 
 ## 4.8.1.1 Interrupt delivery enable (idelivery)
 - Write `0x1` to `idelivery`. Confirm interrupts are delivered for pending sources.
