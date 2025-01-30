@@ -1,725 +1,774 @@
 #pragma once
 
-#include <cstdint>
+#include <functional>
 #include <string>
+#include <span>
 #include <vector>
 #include <memory>
 #include <cassert>
-#include <functional>
 
+namespace TT_APLIC {
 
-namespace TT_APLIC
+typedef std::function<bool(unsigned hart_index, bool is_machine, bool xeip)> DirectDeliveryCallback;
+typedef std::function<bool(uint64_t addr, uint32_t data)> MsiDeliveryCallback;
+
+enum SourceMode {
+    Inactive,
+    Detached,
+    Edge1 = 4,
+    Edge0,
+    Level1,
+    Level0,
+};
+
+enum DeliveryMode {
+    Direct = 0,
+    MSI = 1,
+};
+
+union Mmsiaddrcfgh {
+    uint32_t value = 0;
+
+    void legalize() {
+        value &= 0b1001'1111'0111'0111'1111'1111'1111'1111;
+    }
+
+    struct {
+        unsigned ppn  : 12;  // High part of ppn
+        unsigned lhxw : 4;
+        unsigned hhxw : 3;
+        unsigned res0 : 1;
+        unsigned lhxs : 3;
+        unsigned res1 : 1;
+        unsigned hhxs : 5;
+        unsigned res2 : 2;
+        unsigned l    : 1;
+    };
+};
+
+union Smsiaddrcfgh {
+    uint32_t value = 0;
+
+    void legalize() {
+        value &= 0b0000'0000'0111'0000'0000'1111'1111'1111;
+    }
+
+    struct {
+        unsigned ppn  : 12;  // High part of ppn
+        unsigned res0 : 8;
+        unsigned lhxs : 3;
+        unsigned res1 : 9;
+    };
+};
+
+union Target {
+    uint32_t value = 0;
+
+    void legalize(bool is_machine, DeliveryMode dm, std::span<const unsigned> hart_indices) {
+        assert(hart_indices.size() > 0);
+        if (std::find(hart_indices.begin(), hart_indices.end(), hart_index) == hart_indices.end())
+            hart_index = hart_indices[0];
+        if (dm == Direct) {
+            // TODO: only set bits IPRIOLEN-1:0 for iprio
+            value &= 0b1111'1111'1111'1100'0000'0000'1111'1111;
+            if (iprio == 0)
+                iprio = 1;
+        } else {
+            // TODO: add GEILEN parameter? add parameter for width of EIID?
+            value &= 0b1111'1111'1111'1111'1111'0111'1111'1111;
+            if (is_machine)
+              guest_index = 0;
+        }
+    }
+
+    // fields for direct delivery mode
+    struct {
+        unsigned iprio      : 8;
+        unsigned res0       : 10;
+        unsigned hart_index : 14;
+    };
+
+    // fields for MSI delivery mode
+    struct {
+        unsigned eiid         : 11;
+        unsigned res1         : 1;
+        unsigned guest_index  : 6;
+        // hart_index is common to both delivery modes
+    };
+};
+
+union Topi {
+    uint32_t value = 0;
+
+    void legalize() {
+        value &= 0b0000'0011'1111'1111'0000'0000'1111'1111;
+    }
+
+    struct {
+        unsigned priority : 8;
+        unsigned res0     : 8;
+        unsigned iid      : 10;
+    };
+};
+
+struct Idc {
+    uint32_t idelivery = 0;
+    uint32_t iforce = 0;
+    uint32_t ithreshold = 0;
+    Topi topi = Topi{};
+};
+
+union Domaincfg {
+    uint32_t value = 0x80000000;
+
+    void legalize() {
+        value &= 0x00000105;
+        value |= 0x80000000;
+    }
+
+    struct {
+        unsigned be   : 1;
+        unsigned res0 : 1;
+        unsigned dm   : 1;
+        unsigned res1 : 4;
+        unsigned bit7 : 1;
+        unsigned ie   : 1;
+        unsigned res2 : 15;
+        unsigned top8 : 8;
+    };
+};
+
+union Sourcecfg {
+    uint32_t value = 0;
+
+    void legalize(unsigned num_children) {
+        value &= d ? 0b0111'1111'1111 : 0b0100'0000'0111;
+        if (d and num_children == 0)
+            value = 0;
+        else if (d and child_index >= num_children)
+            child_index = 0;
+        if (d and (sm == 2 or sm == 3))
+            sm = 0;
+    }
+
+    // fields for delegated sources
+    struct {
+        unsigned child_index  : 10;
+        unsigned d            : 1;
+    };
+
+    // fields for non-delegated sources
+    struct {
+        unsigned sm           : 3;
+        // d field is common to both formats
+    };
+};
+
+union Genmsi {
+    uint32_t value = 0;
+
+    void legalize() {
+        value &= 0b1111'1111'1111'1100'0001'0111'1111'1111;
+    }
+
+    struct {
+        unsigned eiid       : 11;
+        unsigned res0       : 1;
+        unsigned busy       : 1;
+        unsigned res1       : 5;
+        unsigned hart_index : 14;
+    };
+};
+
+class Aplic;
+
+class Domain
 {
-  class Aplic;
+    friend Aplic;
 
-  /// APLIC domain control and status register enumeration
-  enum class CsrNumber : unsigned
+public:
+    Domain(const std::shared_ptr<const Aplic>& aplic, std::string_view name, std::shared_ptr<Domain> parent, uint64_t base, uint64_t size, bool is_machine, std::span<const unsigned> hart_indices);
+
+    bool overlaps(uint64_t base, uint64_t size) const {
+        return (base < (base_ + size_)) and (base_ < (base + size));
+    }
+
+    bool containsAddr(uint64_t addr) const {
+        if (addr >= base_ and addr < base_ + size_)
+            return true;
+        return false;
+    }
+
+    uint32_t readDomaincfg() const { return domaincfg_.value; }
+
+    void writeDomaincfg(uint32_t value) {
+        domaincfg_.value = value;
+        domaincfg_.legalize();
+        runCallbacksAsRequired();
+    }
+
+    uint32_t readSourcecfg(unsigned i) const { return sourcecfg_.at(i).value; }
+
+    void writeSourcecfg(unsigned i, uint32_t value) {
+        if (not sourceIsImplemented(i))
+            return;
+        Sourcecfg new_sourcecfg{value};
+        new_sourcecfg.legalize(children_.size());
+
+        auto old_sourcecfg = sourcecfg_[i];
+
+        std::shared_ptr<Domain> new_child = new_sourcecfg.d ? children_[new_sourcecfg.child_index] : nullptr;
+        std::shared_ptr<Domain> old_child = old_sourcecfg.d ? children_[old_sourcecfg.child_index] : nullptr;
+
+        if (old_child and new_child != old_child)
+            old_child->undelegate(i);
+
+        bool source_was_active = sourceIsActive(i);
+        sourcecfg_[i] = new_sourcecfg;
+        bool source_is_active = sourceIsActive(i);
+
+        if (not source_is_active) {
+            target_[i].value = 0;
+            clearIe(i);
+            clearIp(i);
+        } else if (not source_was_active and domaincfg_.dm == Direct) {
+            target_[i].iprio = 1;
+        }
+
+        // source may becoming pending under new source mode
+        // TODO: this might have edge cases (suppose DM=1, SM was Level1 and
+        // is now Edge1, pending bit was cleared when forwarded by MSI or
+        // clripnum; should not set pending bit even though RIV is high)
+        if (rectifiedInputValue(i))
+            setIp(i);
+
+        runCallbacksAsRequired();
+    }
+
+    uint32_t readMmsiaddrcfg() const {
+        if (not is_machine_)
+            return 0;
+        if (parent())
+            return root()->mmsiaddrcfg_;
+        return mmsiaddrcfg_;
+    }
+
+    void writeMmsiaddrcfg(uint32_t value) {
+        if (parent())
+            return;
+        if (mmsiaddrcfgh_.l)
+            return;
+        mmsiaddrcfg_ = value;
+    }
+
+    uint32_t readMmsiaddrcfgh() const {
+        if (not is_machine_)
+            return 0;
+        if (parent()) {
+            auto mmsiaddrcfgh = root()->mmsiaddrcfgh_;
+            mmsiaddrcfgh.l = 1;
+            return mmsiaddrcfgh.value;
+        }
+        return mmsiaddrcfgh_.value;
+    }
+
+    void writeMmsiaddrcfgh(uint32_t value) {
+        if (parent())
+            return;
+        if (mmsiaddrcfgh_.l)
+            return;
+        mmsiaddrcfgh_.value = value;
+        mmsiaddrcfgh_.legalize();
+    }
+
+    uint32_t readSmsiaddrcfg() const {
+        if (not is_machine_)
+            return 0;
+        if (parent())
+            return root()->smsiaddrcfg_;
+        return smsiaddrcfg_;
+    }
+
+    void writeSmsiaddrcfg(uint32_t value) {
+        if (parent())
+            return;
+        if (mmsiaddrcfgh_.l)
+            return;
+        smsiaddrcfg_ = value;
+    }
+
+    uint32_t readSmsiaddrcfgh() const {
+        if (not is_machine_)
+            return 0;
+        if (parent())
+            return root()->smsiaddrcfgh_.value;
+        return smsiaddrcfgh_.value;
+    }
+
+    void writeSmsiaddrcfgh(uint32_t value) {
+        if (parent())
+            return;
+        if (mmsiaddrcfgh_.l)
+            return;
+        smsiaddrcfgh_.value = value;
+        smsiaddrcfgh_.legalize();
+    }
+
+    uint32_t readSetip(unsigned i) const { return setip_.at(i); }
+
+    void writeSetip(unsigned i, uint32_t value) {
+        assert(i < 32);
+        for (unsigned j = 0; j < 32; j++) {
+            if ((value >> j) & 1)
+                trySetIp(i*32+j);
+        }
+        runCallbacksAsRequired();
+    }
+
+    uint32_t readSetipnum() const { return 0; }
+
+    void writeSetipnum(uint32_t value) {
+        trySetIp(value);
+        runCallbacksAsRequired();
+    }
+
+    uint32_t readInClrip(unsigned i) const {
+        assert(i < 32);
+        uint32_t result = 0;
+        for (unsigned j = 0; j < 32; j++) {
+            uint32_t bit = uint32_t(rectifiedInputValue(i*32+j));
+            result |= bit << j;
+        }
+        return result;
+    }
+
+    void writeInClrip(unsigned i, uint32_t value) {
+        assert(i < 32);
+        for (unsigned j = 0; j < 32; j++) {
+            if ((value >> j) & 1)
+                tryClearIp(i*32+j);
+        }
+        runCallbacksAsRequired();
+    }
+
+    uint32_t readClripnum() const { return 0; }
+
+    void writeClripnum(uint32_t value) {
+        tryClearIp(value);
+        runCallbacksAsRequired();
+    }
+
+    uint32_t readSetie(unsigned i) const { return setie_.at(i); }
+
+    void writeSetie(unsigned i, uint32_t value) {
+        assert(i < 32);
+        for (unsigned j = 0; j < 32; j++) {
+            if ((value >> j) & 1)
+                setIe(i*32+j);
+        }
+        runCallbacksAsRequired();
+    }
+
+    uint32_t readSetienum() const { return 0; }
+
+    void writeSetienum(uint32_t value) {
+        setIe(value);
+        runCallbacksAsRequired();
+    }
+
+    uint32_t readClrie(unsigned /*i*/) const { return 0; }
+
+    void writeClrie(unsigned i, uint32_t value) {
+        assert(i < 32);
+        for (unsigned j = 0; j < 32; j++) {
+            if ((value >> j) & 1)
+                clearIe(i*32+j);
+        }
+        runCallbacksAsRequired();
+    }
+
+    uint32_t readClrienum() const { return 0; }
+
+    void writeClrienum(uint32_t value) {
+        clearIe(value);
+        runCallbacksAsRequired();
+    }
+
+    uint32_t readSetipnumLe() const {
+        assert(0);
+    }
+
+    void writeSetipnumLe(uint32_t /*value*/) {
+        assert(0);
+    }
+
+    uint32_t readSetipnumBe() const {
+        assert(0);
+    }
+
+    void writeSetipnumBe(uint32_t /*value*/) {
+        assert(0);
+    }
+
+    uint32_t readGenmsi() const { return genmsi_.value; }
+
+    void writeGenmsi(uint32_t value) {
+        if (domaincfg_.dm == Direct)
+            return;
+        if (genmsi_.busy)
+            return;
+        genmsi_.value = value;
+        genmsi_.legalize();
+        genmsi_.busy = 1;
+    }
+
+    uint32_t readTarget(unsigned i) const { return target_.at(i).value; }
+
+    void writeTarget(unsigned i, uint32_t value) {
+        if (not sourceIsActive(i))
+            return;
+        Target target{value};
+        target.legalize(is_machine_, DeliveryMode(domaincfg_.dm), hart_indices_);
+        target_[i] = target;
+        updateTopi();
+        runCallbacksAsRequired();
+    }
+
+    uint32_t readIdelivery(unsigned hart_index) const { return idcs_.at(hart_index).idelivery; }
+
+    void writeIdelivery(unsigned hart_index, uint32_t value) {
+        idcs_.at(hart_index).idelivery = value & 1;
+        runCallbacksAsRequired();
+    }
+
+    uint32_t readIforce(unsigned hart_index) const { return idcs_.at(hart_index).iforce; }
+
+    void writeIforce(unsigned hart_index, uint32_t value) {
+        idcs_.at(hart_index).iforce = value & 1;
+        runCallbacksAsRequired();
+    }
+
+    uint32_t readIthreshold(unsigned hart_index) const { return idcs_.at(hart_index).ithreshold; }
+
+    void writeIthreshold(unsigned hart_index, uint32_t value) {
+        idcs_.at(hart_index).ithreshold = value; // TODO: must implement exactly IPRIOLEN bits
+        updateTopi();
+    }
+
+    uint32_t readTopi(unsigned hart_index) const { return idcs_.at(hart_index).topi.value; }
+
+    void writeTopi(unsigned /*hart_index*/, uint32_t /*value*/) {}
+
+    uint32_t readClaimi(unsigned hart_index) {
+        auto topi = idcs_.at(hart_index).topi;
+        if (domaincfg_.dm == Direct) {
+            auto sm = sourcecfg_[topi.iid].sm;
+            if (topi.value == 0)
+                idcs_.at(hart_index).iforce = 0;
+            else if (sm == Detached or sm == Edge0 or sm == Edge1)
+                clearIp(topi.iid);
+            runCallbacksAsRequired();
+        }
+        return topi.value;
+    }
+
+    void writeClaimi(unsigned /*hart_index*/, uint32_t /*value*/) {}
+
+private:
+
+    uint32_t read(uint64_t addr)
     {
-      Domaincfg,
-      Sourcecfg1,
-      Sourcecfg1023 = Sourcecfg1 + 1022,
-      Mmsiaddrcfg = 0x1bc0 >> 2,
-      Mmsiaddrcfgh,
-      Smsiaddrcfg,
-      Smsiaddrcfgh,
-      Setip0 = 0x1c00 >> 2,
-      Setip3 = Setip0 + 3,
-      Setip5 = Setip0 + 5,
-      Setip7 = Setip0 + 7,
-      Setip31 = Setip0 + 31,
-      Setipnum = 0x1cdc >> 2,
-      Inclrip0 = 0x1d00 >> 2,
-      Inclrip31 = Inclrip0 + 31,
-      Clripnum = 0x1ddc >> 2,
-      Setie0 = 0x1e00 >> 2,
-      Setie31 = Setie0 + 31,
-      Setienum = 0x1edc >> 2,
-      Clrie0 = 0x1f00 >> 2,
-      Clrie31 = Clrie0 + 31,
-      Clrienum = 0x1fdc >> 2,
-      Setipnumle = 0x2000 >> 2,
-      Setipnumbe,
-      Genmsi = 0x3000 >> 2,
-      Target1,
-      Target2 = Target1 + 1,
-      Target3 = Target1 + 2,
-      Target4 = Target1 + 3,
-      Target5 = Target1 + 4,
-      Target6 = Target1 + 5,
-      Target7 = Target1 + 6,
-      Target1023 = Target1 + 1022,
-      Idelivery = 0x4000 >> 2,
-      Iforce = Idelivery + 1,
-      Ithreshold = Idelivery + 2,
-      Topi = Idelivery + 6,
-      Claimi = Idelivery + 7
-    };
+        assert(addr % 4 == 0);
+        assert(addr >= base_ and addr < base_ + size_);
+        uint64_t offset = addr - base_;
+        switch (offset) {
+            case 0x0000: return readDomaincfg();
+            case 0x1bc0: return readMmsiaddrcfg();
+            case 0x1bc4: return readMmsiaddrcfgh();
+            case 0x1bc8: return readSmsiaddrcfg();
+            case 0x1bcc: return readSmsiaddrcfgh();
+            case 0x1cdc: return readSetipnum();
+            case 0x1ddc: return readClripnum();
+            case 0x1edc: return readSetienum();
+            case 0x1fdc: return readClrienum();
+            case 0x2000: return readSetipnumLe();
+            case 0x2004: return readSetipnumBe();
+            case 0x3000: return readGenmsi();
+        }
 
+        if (offset >= 0x0004 and offset <= 0x0ffc) {
+            unsigned i = offset/4;
+            return readSourcecfg(i);
+        } else if (offset >= 0x1c00 and offset <= 0x1c7c) {
+            unsigned i = (offset - 0x1c00)/4;
+            return readSetip(i);
+        } else if (offset >= 0x1d00 and offset <= 0x1d7c) {
+            unsigned i = (offset - 0x1d00)/4;
+            return readInClrip(i);
+        } else if (offset >= 0x1e00 and offset <= 0x1e7c) {
+            unsigned i = (offset - 0x1e00)/4;
+            return readSetie(i);
+        } else if (offset >= 0x1f00 and offset <= 0x1f7c) {
+            unsigned i = (offset - 0x1f00)/4;
+            return readClrie(i);
+        } else if (offset >= 0x3004 and offset <= 0x3ffc) {
+            unsigned i = (offset - 0x3000)/4;
+            return readTarget(i);
+        } else if (offset >= 0x4000) {
+            unsigned hart_index = (offset - 0x4000)/32;
+            unsigned idc_offset = (offset - 0x4000) - 32*hart_index;
+            if (hart_index >= idcs_.size())
+                return 0;
+            switch (idc_offset) {
+                case 0x00: return readIdelivery(hart_index);
+                case 0x04: return readIforce(hart_index);
+                case 0x08: return readIthreshold(hart_index);
+                case 0x18: return readTopi(hart_index);
+                case 0x1c: return readClaimi(hart_index);
+            }
+        }
 
-  /// Integer type used to represent a domain CSR value.
-  typedef uint32_t CsrValue;
+        return 0;
+    }
 
-  /// Interrupt source mode.
-  enum class SourceMode : unsigned
+    void write(uint64_t addr, uint32_t data)
     {
-      Inactive = 0,
-      Detached = 1,
-      Edge1 = 4,
-      Edge0 = 5,
-      Level1 = 6,
-      Level0 = 7
-    };
+        assert(addr % 4 == 0);
+        assert(addr >= base_ and addr < base_ + size_);
+        uint64_t offset = addr - base_;
+        switch (offset) {
+            case 0x0000: writeDomaincfg(data); return;
+            case 0x1bc0: writeMmsiaddrcfg(data); return;
+            case 0x1bc4: writeMmsiaddrcfgh(data); return;
+            case 0x1bc8: writeSmsiaddrcfg(data); return;
+            case 0x1bcc: writeSmsiaddrcfgh(data); return;
+            case 0x1cdc: writeSetipnum(data); return;
+            case 0x1ddc: writeClripnum(data); return;
+            case 0x1edc: writeSetienum(data); return;
+            case 0x1fdc: writeClrienum(data); return;
+            case 0x2000: writeSetipnumLe(data); return;
+            case 0x2004: writeSetipnumBe(data); return;
+            case 0x3000: writeGenmsi(data); return;
+        }
+        if (offset >= 0x0004 and offset <= 0x0ffc) {
+            unsigned i = offset/4;
+            writeSourcecfg(i, data);
+        } else if (offset >= 0x1c00 and offset <= 0x1c7c) {
+            unsigned i = (offset - 0x1c00)/4;
+            writeSetip(i, data);
+        } else if (offset >= 0x1d00 and offset <= 0x1d7c) {
+            unsigned i = (offset - 0x1d00)/4;
+            writeInClrip(i, data);
+        } else if (offset >= 0x1e00 and offset <= 0x1e7c) {
+            unsigned i = (offset - 0x1e00)/4;
+            writeSetie(i, data);
+        } else if (offset >= 0x1f00 and offset <= 0x1f7c) {
+            unsigned i = (offset - 0x1f00)/4;
+            writeClrie(i, data);
+        } else if (offset >= 0x3004 and offset <= 0x3ffc) {
+            unsigned i = (offset - 0x3000)/4;
+            writeTarget(i, data);
+        } else if (offset >= 0x4000) {
+            unsigned hart_index = (offset - 0x4000)/32;
+            unsigned idc_offset = (offset - 0x4000) - 32*hart_index;
+            if (hart_index >= idcs_.size())
+                return;
+            switch (idc_offset) {
+                case 0x00: writeIdelivery(hart_index, data); return;
+                case 0x04: writeIforce(hart_index, data); return;
+                case 0x08: writeIthreshold(hart_index, data); return;
+                case 0x18: writeTopi(hart_index, data); return;
+                case 0x1c: writeClaimi(hart_index, data); return;
+            }
+        }
+    }
 
-
-  /// APLIC Interrupt Delivery Control (IDC).  One per hart. Used
-  /// for direct delivery (non message signaled).
-  struct Idc
-  {
-    // Enum corresponding to the rank of the CsrValue items in this struct.
-    enum class Field : unsigned { Idelivery, Iforce, Ithreshold, Topi=6, Claimi=7 };
-
-    CsrValue idelivery_= 0;
-    CsrValue iforce_ = 0;
-    CsrValue ithreshold_ = 0;
-    CsrValue topi_ = 0;
-  };
-
-
-  /// Union to pack/unpack the topi field in Idc.
-  union IdcTopi
-  {
-    IdcTopi(CsrValue value)
-      : value_(value)
-    { }
-
-    CsrValue value_;   // 1st variant
-
-    struct   // 2nd variant
+    void setDirectCallback(DirectDeliveryCallback callback)
     {
-      unsigned prio_ : 8;
-      unsigned res0_ : 8;
-      unsigned id_   : 10;
-      unsigned res1_ : 6;
-    } bits_;
-  };
+        direct_callback_ = callback;
+        for (auto child : children_)
+            child->setDirectCallback(callback);
+    }
 
-
-  /// Union to pack/unpack the Domaincfg CSR.
-  union Domaincfg
-  {
-    Domaincfg(CsrValue value = 0)
-      : value_(value)
-    { }
-
-    /// Mask of writable bits.
-    constexpr static CsrValue mask()
-    { return 0b0000'0000'0000'0000'0000'0001'0000'0101; }
-
-    CsrValue value_;    // First variant of union
-
-    struct   // Second variant
+    void setMsiCallback(MsiDeliveryCallback callback)
     {
-      unsigned be_    : 1;  // Big endian
-      unsigned res0_  : 1;
-      unsigned dm_    : 1;  // Deliver mode
-      unsigned res1_  : 4;
-      unsigned bit7_  : 1;
-      unsigned ie_    : 1;  // Interrupt enable
-      unsigned res2_  : 15;
-      unsigned top8_  : 8;
-    } bits_;
-  };
+        msi_callback_ = callback;
+        for (auto child : children_)
+            child->setMsiCallback(callback);
+    }
 
+    void reset();
 
-  /// Union to pack/unpack the Sourcecfg CSRs
-  union Sourcecfg
-  {
-    Sourcecfg(CsrValue value = 0)
-      : value_(value)
-    { }
-
-    /// Mask of writable bits when delegated (D == 1).
-    constexpr static CsrValue delegatedMask()
-    { return 0b111'1111'1111; }
-
-    /// Mask of writable bits when not delegated (D == 0).
-    constexpr static CsrValue nonDelegatedMask()
-    { return 0b100'0000'0111; }
-
-    CsrValue value_;  // First variant of union
-
-    struct   // Second variant
+    void edge(unsigned i)
     {
-      unsigned child_ : 10;    // Child index (relative to parent)
-      unsigned d_     : 1;    // Delegate
-      unsigned res0_  : 21;
-    } bits_;
+        assert(i > 0 && i < 1024);
+        if (sourcecfg_[i].d) {
+            children_[sourcecfg_[i].child_index]->edge(i);
+            return;
+        }
+        auto riv = rectifiedInputValue(i);
+        auto sm = sourcecfg_[i].sm;
+        if (sm == Edge1 or sm == Edge0) {
+            if (riv)
+                setIp(i);
+        } else if (sm == Level1 or sm == Level0) {
+            if (riv)
+                setIp(i);
+            else
+                clearIp(i);
+        }
+        runCallbacksAsRequired();
+    }
 
-    struct   // Third variant
+    void updateTopi();
+
+    void inferXeipBits();
+
+    void runCallbacksAsRequired();
+
+    bool readyToForwardViaMsi(unsigned i) const
     {
-      unsigned sm_     : 3;  // Source mode
-      unsigned res0_   : 7;
-      unsigned d_      : 1;  // Delegate
-      unsigned res1_   : 22;
-    } bits2_;
-  };
+        if (domaincfg_.dm != MSI)
+            return false;
+        if (i == 0)
+            return genmsi_.busy;
+        return domaincfg_.ie and pending(i) and enabled(i);
+    }
 
+    void forwardViaMsi(unsigned i) {
+        assert(readyToForwardViaMsi(i));
+        if (i == 0) {
+            if (msi_callback_) {
+                uint64_t addr = msiAddr(genmsi_.hart_index, 0);
+                uint32_t data = genmsi_.eiid;
+                msi_callback_(addr, data);
+            }
+            genmsi_.busy = 0;
+        } else {
+            if (msi_callback_) {
+                uint64_t addr = msiAddr(target_[i].hart_index, target_[i].guest_index);
+                uint32_t data = target_[i].eiid;
+                msi_callback_(addr, data);
+            }
+            clearIp(i);
+        }
+    }
 
-  /// Union to pack/unpack the Mmsiaddrcfgh CSR
-  union Mmsiaddrcfgh
-  {
-    Mmsiaddrcfgh(CsrValue value = 0)
-      : value_(value)
-    { }
+    uint64_t msiAddr(unsigned hart_index, unsigned guest_index) const;
 
-    /// Mask of writable bits.
-    constexpr static CsrValue mask()
-    { return 0b1001'1111'0111'0111'1111'1111'1111'1111; }
+    bool rectifiedInputValue(unsigned i) const;
 
-    CsrValue value_; // First union variant.
+    bool sourceIsImplemented(unsigned i) const;
 
-    struct           // Second variant.
+    bool sourceIsActive(unsigned i) const
     {
-      unsigned ppn_  : 12;  // High part of ppn
-      unsigned lhxw_ : 4;
-      unsigned hhxw_ : 3;
-      unsigned res0_ : 1;
-      unsigned lhxs_ : 3;
-      unsigned res1_ : 1;
-      unsigned hhxs_ : 5;
-      unsigned res2_ : 2;
-      unsigned l_    : 1;
-    } bits_;
-  };
+        if (i == 0)
+            return false;
+        return sourcecfg_.at(i).sm != Inactive;
+    }
 
-
-  /// Union to pack/unpack the Smsiaddrcfgh CSR
-  union Smsiaddrcfgh
-  {
-    Smsiaddrcfgh(CsrValue value = 0)
-      : value_(value)
-    { }
-
-    /// Mask of writable bits.
-    constexpr static CsrValue mask()
-    { return 0b0000'0000'0111'0000'0000'1111'1111'1111; }
-
-    CsrValue value_;   // First union variant
-
-    struct             // Second variant
+    void undelegate(unsigned i)
     {
-      unsigned ppn_  : 12;  // High part of ppn
-      unsigned res0_ : 8;
-      unsigned lhxs_ : 3;
-      unsigned res1_ : 9;
-    } bits_;
-  };
+        assert(i > 0 && i < 1024);
+        if (sourcecfg_[i].d) {
+            auto child = children_[sourcecfg_[i].child_index];
+            child->undelegate(i);
+        }
+        sourcecfg_[i] = Sourcecfg{};
+        target_[i] = Target{};
+        clearIp(i);
+        clearIe(i);
+    }
 
-
-  /// Union to pack/unpack the genmsi CSR
-  union Genmsi
-  {
-    Genmsi(CsrValue value = 0)
-      : value_(value)
-    { }
-
-    /// Mask of writable bits.
-    constexpr static CsrValue mask()
-    { return 0b1111'1111'1111'1100'0001'0111'1111'1111; }
-
-    CsrValue value_;   // First union variant
-
-    struct             // Second variant
+    void trySetIp(unsigned i)
     {
-      unsigned eiid_ : 11;  // External interrupt id
-      unsigned res0_ : 1;
-      unsigned busy_ : 1;
-      unsigned res1_ : 5;
-      unsigned hart_ : 14;
-    } bits_;
-  };
+        if (not sourceIsActive(i))
+            return;
+        switch (sourcecfg_[i].sm) {
+            case Detached:
+            case Edge0:
+            case Edge1:
+                setIp(i);
+                break;
+            case Level0:
+            case Level1:
+                if (domaincfg_.dm == MSI and rectifiedInputValue(i))
+                    setIp(i);
+                break;
+            default: assert(false);
+        }
+    }
 
-
-  /// Union to pack/unpack the Target CSRs
-  union Target
-  {
-    Target(CsrValue value = 0)
-      : value_(value)
-    { }
-
-    /// Mask of writable bits when delivery mode is direct.
-    constexpr static CsrValue directMask()
-    { return 0b1111'1111'1111'1100'0000'0000'1111'1111; }
-
-    /// Mask of writable bits when delivery mode is MSI.
-    constexpr static CsrValue msiMask()
-    { return 0b1111'1111'1111'1111'1111'0111'1111'1111; }
-
-    CsrValue value_;   // First union variant
-
-    struct             // Second variant (non MSI delivery)
+    void tryClearIp(unsigned i)
     {
-      unsigned prio_ : 8;  // Priority
-      unsigned res0_ : 10;
-      unsigned hart_ : 14;
-    } bits_;
+        if (not sourceIsActive(i))
+            return;
+        switch (sourcecfg_[i].sm) {
+            case Detached:
+            case Edge0:
+            case Edge1:
+                clearIp(i);
+                break;
+            case Level0:
+            case Level1:
+                if (domaincfg_.dm == MSI)
+                    clearIp(i);
+                break;
+            default:
+                assert(false);
+        }
+    }
 
-    struct             // Third variant (MSI delivery)
+    void setOrClearIeOrIpBit(bool ie, unsigned i, bool set)
     {
-      unsigned eiid_  : 11;
-      unsigned res1_  : 1;
-      unsigned guest_ : 6;
-      unsigned mhart_ : 14;
-    } mbits_;
-  };
+        if (set and not sourceIsActive(i))
+            return;
+        auto& setix = ie ? setie_ : setip_;
+        uint32_t value = setix[i/32];
+        uint32_t one_hot = 1 << (i % 32);
+        if (set)
+            value |= one_hot;
+        else
+            value &= ~one_hot;
+        setix[i/32] = value;
+        updateTopi();
+    }
 
+    void setIp(unsigned i)   { setOrClearIeOrIpBit(false, i, true); }
+    void clearIp(unsigned i) { setOrClearIeOrIpBit(false, i, false); }
+    void setIe(unsigned i)   { setOrClearIeOrIpBit(true, i, true); }
+    void clearIe(unsigned i) { setOrClearIeOrIpBit(true, i, false); }
 
-  /// Aplic domain control and status register.
-  class DomainCsr
-  {
-  public:
+    bool enabled(unsigned i) const { return bool((setie_.at(i/32) >> (i % 32)) & 1); }
+    bool pending(unsigned i) const { return bool((setip_.at(i/32) >> (i % 32)) & 1); }
 
-    /// Default constructor.
-    DomainCsr() = default;
+    std::shared_ptr<Domain> root() const;
+    std::shared_ptr<Domain> parent() const { return parent_.lock(); }
+    std::shared_ptr<const Aplic> aplic() const { return aplic_.lock(); }
 
-    DomainCsr(const std::string& name, CsrNumber csrn,
-              CsrValue reset, CsrValue mask)
-      : name_(name), csrn_(csrn), reset_(reset), value_(reset), mask_(mask)
-    { }
-
-    /// Return current value of this CSR.
-    CsrValue read() const
-    { return value_; }
-
-    /// Set value of this CSR to the given value after masking it with
-    /// the associated write mask.
-    void write(CsrValue value)
-    { value_ = (value_ & ~mask_) | (value & mask_) ; }
-
-    /// Return the name of this CSR.
-    std::string name() const
-    { return name_; }
-
-    /// Size in bytes of this CSR.
-    static unsigned size()
-    { return sizeof(value_); }
-
-    /// Offset from the domain address to the address of this CSR.
-    unsigned offset() const
-    { return unsigned(csrn_) * size(); }
-
-    /// Return the write mask of this CSR.
-    CsrValue mask() const
-    { return mask_; }
-
-    /// Set the write mask of this CSR.
-    void setMask(CsrValue m)
-    { mask_ = m; }
-
-    /// Set reset.
-    void reset(CsrValue reset)
-    { reset_ = reset; }
-
-  protected:
-
-  private:
-
+    std::weak_ptr<const Aplic> aplic_;
     std::string name_;
-    CsrNumber csrn_ = CsrNumber{0};
-    CsrValue reset_ = 0;
-    CsrValue value_ = 0;
-    CsrValue mask_ = 0;
-  };
-
-
-  /// Model an advanced platform local interrupt controller domain.
-  class Domain
-  {
-  public:
-
-    friend class Aplic;
-
-    /// Aplic domain constants.
-    enum { IdcOffset = 0x4000, MaxId = 1023, MaxHart = 16384, Align = 16*1024,
-           MaxIpriolen = 8 };
-
-    /// Default constructor.
-    Domain()
-    { }
-
-    /// Constructor. interruptCount is the largest supported interrupt id and
-    /// must be less than or equal to 1023. Size is the number of bytes
-    /// occupied by this domain in the memory address space.
-    Domain(Aplic *aplic, const std::string& name, std::shared_ptr<Domain> parent, uint64_t addr, uint64_t size,
-           unsigned hartCount, unsigned interruptCount, bool isMachine)
-      : aplic_(aplic), name_(name), addr_(addr), size_(size), hartCount_(hartCount),
-        interruptCount_(interruptCount), parent_(parent),
-        isMachine_(isMachine)
-    {
-      defineCsrs();
-      defineIdcs();
-      assert(interruptCount <= MaxId);
-      assert(hartCount <= MaxHart);
-      assert((addr % Align) == 0);  // Address must be a aligned.
-      assert((size % Align) == 0);  // Size must be a multiple of alignment.
-      assert(size >= IdcOffset + hartCount * 32);
-    }
-
-    /// Check for overlap with another region.
-    bool overlaps(uint64_t base, uint64_t size)
-    { return (base < (addr_ + size_)) and (addr_ < (base + size)); }
-
-    /// Address check
-    bool contains_addr(uint64_t addr)
-    { return (addr >= addr_ and addr < (addr_ + size_)); }
-
-    /// Read a memory mapped register associated with this Domain. Return true
-    /// on success. Return false leaving value unmodified if addr is not in the
-    /// range of this Domain or if size/alignment is not valid. This method
-    /// cannot be const because a read from idc.claimi has a side effect.
-    bool read(uint64_t addr, unsigned size, uint64_t& value);
-
-    /// Write a memory mapped register associated with this Domain. Return true
-    /// on success. Return false if addr is not in the range of this Domain or if
-    /// size/alignment is not valid.
-    bool write(uint64_t addr, unsigned size, uint64_t value);
-
-    /// Return a pointer to the child domain or nullptr if this domain has
-    /// no child.
-    std::shared_ptr<Domain> getChild(unsigned ix) const
-    { return ix < children_.size() ? children_.at(ix) : nullptr; }
-
-    /// Return parent of this domain or nullptr if this is the root domain.
-    std::shared_ptr<Domain> getParent() const
-    { return parent_; }
-
-    /// Return true if given interrupt id is delegated to a child domain.
-    /// Return false if id is out of bounds.
-    bool isDelegated(unsigned id) const;
-
-    /// Return true if given interrupt id is delegated to a child domain setting
-    /// childIx to the index of that child. Return false leaving childIx
-    /// unmodified if id is out of bounds or if the interrupt id is not
-    /// delegated.
-    bool isDelegated(unsigned id, unsigned& childIx) const;
-
-    /// Set the state of the source with the given id.
-    bool setSourceState(unsigned id, bool prev, bool state);
-
-    /// Return the source state of the interrupt source with the given id.
-    SourceMode sourceMode(unsigned id) const;
-
-    /// Return true if interrupt with given id is active (enabled) in this
-    /// domain.
-    bool isActive(unsigned id) const
-    { return id != 0 and id <= interruptCount_ and not isDelegated(id) and
-        sourceMode(id) != SourceMode::Inactive; }
-
-    /// Return true if interrupt with given id is inverted in this domain
-    /// (active low).
-    bool isInverted(unsigned id) const
-    {
-      using SM = SourceMode;
-      return id != 0 and id <= interruptCount_ and not isDelegated(id) and
-        (sourceMode(id)== SM::Edge0 or sourceMode(id) == SM::Level0);
-    }
-
-    /// Return true if interrupt with given id is level sensitive this domain.
-    bool isLevelSensitive(unsigned id) const
-    {
-      using SM = SourceMode;
-      return id != 0 and id <= interruptCount_ and not isDelegated(id) and
-        (sourceMode(id) == SM::Level0 or sourceMode(id) == SM::Level1);
-    }
-
-    constexpr bool isFalling(bool prev, bool curr) const
-    { return prev and not curr; }
-
-    constexpr bool isRising(bool prev, bool curr) const
-    { return not prev and curr; }
-
-    /// Define a callback function for the domain to deliver/un-deliver an
-    /// interrupt to a hart. When an interrupt becomes active (ready for
-    /// delivery), the domain will call this function which will presumably set
-    /// the M/S external interrupt pending bit in the MIP CSR of that hart.
-    void setDeliveryMethod(std::function<bool(unsigned hartIx, bool machine, bool ip)> func)
-    { deliveryFunc_ = func; }
-
-    /// Define a callback function for the domain to write to a memory location.
-    /// This is used to deliver interrupts to the IMSIC by writing to the IMSIC
-    /// address.
-    void setImsicMethod(std::function<bool(uint64_t addr, unsigned size, uint64_t value)> func)
-    { imsicFunc_ = func; }
-
-    /// Return the IMSIC address for the given hart. This is computed from the
-    /// MMSIADDRCFG CSRs for machine privilege and from the SMSIADDRCFG CSRS for
-    /// supervisor privilege domains. See section 4.9.1 of the riscv spec.
-    uint64_t imsicAddress(unsigned hartIx, unsigned guestIx);
-
-    /// Return true if this domain is in big-endian configuration.
-    bool bigEndian() const
-    { return domaincfg().bits_.be_; }
-
-    /// Return true if interrupts are enabled for this domain.
-    bool interruptEnabled() const
-    { return domaincfg().bits_.ie_; }
-
-    /// Return true if delivery mode is direct for this mode. Return false if
-    /// delivery mode is through MSI.
-    bool directDelivery() const
-    { return not domaincfg().bits_.dm_; }
-
-    /// Return true if this domain targets machine privilege.
-    bool isMachinePrivilege() const
-    { return isMachine_; }
-
-    /// Return the memory address corresponding to the given CSR number.
-    uint64_t csrAddress(CsrNumber csr) const
-    { return addr_ + uint64_t(csr)*sizeof(CsrValue); }
-
-    /// Return the memory address of the IDC structure corresponding to the given hart.
-    uint64_t idcAddress(unsigned hart) const
-    { return addr_ + IdcOffset + hart*32; }
-
-    /// Return the memory address of the idelivery field of the IDC structure
-    /// corresponding to the given hart.
-    uint64_t ideliveryAddress(unsigned hart) const
-    { return idcAddress(hart); }
-
-    /// Return the memory address of the iforce field of the IDC structure
-    /// corresponding to the given hart.
-    uint64_t iforceAddress(unsigned hart) const
-    { return idcAddress(hart) + sizeof(CsrValue); }
-
-    /// Return the memory address of the ithreshold_ field of the IDC structure
-    /// corresponding to the given hart.
-    uint64_t ithresholdAddress(unsigned hart) const
-    { return idcAddress(hart) + 2*sizeof(CsrValue); }
-
-    /// Return the memory address of the topi field of the IDC structure
-    /// corresponding to the given hart.
-    uint64_t topiAddress(unsigned hart) const
-    { return idcAddress(hart) + 6*sizeof(CsrValue); }
-
-    /// Return the memory address of the claimi field of the IDC structure
-    /// corresponding to the given hart.
-    uint64_t claimiAddress(unsigned hart) const
-    { return idcAddress(hart) + 7*sizeof(CsrValue); }
-
-    /// Advance a csr number by the given amount (add amount to number).
-    static CsrNumber advance(CsrNumber csrn, int32_t amount)
-    { return CsrNumber(CsrValue(csrn) + amount); }
-
-  protected:
-
-    /// Deliver/undeliver interrupt of given source to the associated hart. This
-    /// is called when a source status changes.
-    void deliverInterrupt(unsigned id);
-
-    /// Add given child to the children of this domain.
-    void addChild(std::shared_ptr<Domain> child)
-    { children_.push_back(child); }
-
-    /// Return the domaincfg CSR value.
-    Domaincfg domaincfg() const
-    { return csrs_.at(unsigned(CsrNumber::Domaincfg)).read(); }
-
-    /// Return the pointer to the root domain.
-    Domain* rootDomain()
-    {
-      if (isRoot())
-        return this;
-      return getParent()->rootDomain();
-    }
-
-    /// Helper to read method. Read from the interrupt delivery control section.
-    bool readIdc(uint64_t addr, unsigned size, CsrValue& value);
-
-    /// Helper to write method. Write to the interrupt delivery control section.
-    bool writeIdc(uint64_t addr, unsigned size, CsrValue value);
-
-    /// Identify the Idc structure and field within the structure corresponding to
-    /// the given address returning pointer to the Idc structure and setting field
-    /// to the index of the field within it. Return nullptr if address is out
-    /// of the Idc structures bound or is unaligned.
-    Idc* findIdc(uint64_t addr, uint64_t& idcIndex, Idc::Field& field)
-    {
-      unsigned fieldSize = sizeof(CsrValue);  // Required size.
-      if ((addr & (fieldSize - 1)) != 0)
-        return nullptr;
-
-      uint64_t ix = (addr - (addr_ + IdcOffset)) / 32;
-      if (ix >= idcs_.size())
-        return nullptr;
-      idcIndex = ix;
-
-      Idc& idc = idcs_.at(idcIndex);
-      size_t idcFieldCount = 32 / sizeof(idc.idelivery_);
-      uint64_t itemIx = (addr - (addr_ + IdcOffset)) / fieldSize;
-      unsigned idcFieldIx = itemIx % idcFieldCount;
-      field = Idc::Field{idcFieldIx};
-      return &idc;
-    }
-
-    /// Set the interrupt pending bit of the given id. Return true if
-    /// successful. Return false if it is not possible to set the bit (see
-    /// section 4.7 of the riscv-interrupt spec).
-    bool trySetIp(unsigned id);
-
-    /// Clear the interrupt pending bit of the given id. Return true if
-    /// successful. Return false if it is not possible to set the bit (see
-    /// section 4.7 of the riscv-interrupt spec).
-    bool tryClearIp(unsigned id);
-
-    /// Set the interrupt pending bit corresponding to the given interrupt id to
-    /// flag. Return true on success and false if id is out of bounds. This has
-    /// no effect if the interrupt id is not active in this domain. The top id
-    /// for the target host will be updated as a side effect.
-    bool setInterruptPending(unsigned id, bool flag);
-
-    void updateTopi(unsigned id, bool ready);
-
-    /// Set the interrupt enabled bit of the given id. Return true if
-    /// successful. Return false if it is not possible to set the bit (see
-    /// section 4.7 of the riscv-interrupt spec).
-    bool trySetIe(unsigned id);
-
-    /// Clear the interrupt enabled bit of the given id. Return true if
-    /// successful. Return false if it is not possible to set the bit (see
-    /// section 4.7 of the riscv-interrupt spec).
-    bool tryClearIe(unsigned id);
-
-    /// Set the interrupt enabled bit corresponding to the given interrupt id to
-    /// flag. Return true on success and false if id is out of bounds. This has
-    /// no effect if the interrupt id is not active in this domain. The top id
-    /// for the target host will be updated as a side effect.
-    bool setInterruptEnabled(unsigned id, bool flag);
-
-    /// Return true if this is domain is a leaf.
-    bool isLeaf() const
-    { return children_.empty(); }
-
-    /// Return true if this is domain is a root domain.
-    bool isRoot() const
-    { return not getParent(); }
-
-    /// Return CSR having the given number n.
-    DomainCsr& csrAt(CsrNumber n)
-    { return csrs_.at(unsigned(n)); }
-
-    /// Define the control and status memory mapped registers associated with
-    /// this domain.
-    void defineCsrs();
-
-    /// Define the interrupt deliver control structures (one per hart)
-    /// associated with this domain. IDC is used only in direct (non-MSI)
-    /// delivery mode.
-    void defineIdcs();
-
-    /// Called after a CSR write to update masks and bits depending on sourcecfg
-    /// if sourcecfg is written. Number of written CSR is passed in csrn.
-    void sourcecfgWrite(unsigned csrn, CsrValue val);
-
-    /// Make writable/non-writable the bit corresponding to id in the given
-    /// set of CSRs when given flag is true/false.
-    void makeWritable(unsigned id, CsrNumber csrn, bool flag)
-    {
-      if (id == 0 or id > interruptCount_)
-        return;
-      CsrNumber cn = advance(csrn, id);
-      unsigned bitsPerValue = sizeof(CsrValue)*8;
-      CsrValue bitMask = CsrValue(1) << (id % bitsPerValue);
-      CsrValue mask = csrAt(cn).mask();
-      mask = flag? mask | bitMask : mask & ~bitMask;
-      csrAt(cn).setMask(mask);
-    }
-
-    /// Make writable/non-writable the interrupt-enabled bit corresponding to
-    /// id when given flag is true/false.
-    void setIeWritable(unsigned id, bool flag)
-    { makeWritable(id, CsrNumber::Setie0, flag); }
-
-    /// Make writable/non-writable the interrupt-pending bit corresponding to
-    /// id when given flag is true/false.
-    void setIpWritable(unsigned id, bool flag)
-    { makeWritable(id, CsrNumber::Setip0, flag); }
-
-    /// Advance a csr number by the given amount (add amount to number).
-    static CsrNumber advance(CsrNumber csrn, uint32_t amount)
-    { return CsrNumber(CsrValue(csrn) + amount); }
-
-    /// Return the value of the interrupt bit (pending or enabled) corresponding
-    /// to the given interrupt id and the given CSR which must be the first
-    /// CSR in its sequence (i.e. Setip0 or Setie0)
-    bool readBit(unsigned id, CsrNumber csrn) const
-    {
-      unsigned bitsPerItem = sizeof(CsrValue) * 8;
-      auto cn = advance(csrn, id/bitsPerItem);
-      unsigned bitIx = id % bitsPerItem;
-      CsrValue bitMask = CsrValue(1) << bitIx;
-      CsrValue value = csrs_.at(unsigned(cn)).read();
-      bool ip = value & bitMask;
-      return ip;
-    }
-
-    /// Set the value of the interrupt bit (pending or enabled) corresponding
-    /// to the given interrupt id and the given CSR which must be the first CSR
-    /// in its sequence (i.e. Setip0 or Setie0). Caller must check if write is
-    /// legal.
-    void writeBit(unsigned id, CsrNumber csrn, bool flag)
-    {
-      unsigned bitsPerItem = sizeof(CsrValue) * 8;
-      auto cn = advance(csrn, id/bitsPerItem);
-      unsigned bitIx = id % bitsPerItem;
-      CsrValue bitMask = CsrValue(1) << bitIx;
-      CsrValue value = csrs_.at(unsigned(cn)).read();
-      value = flag ? value | bitMask : value & ~bitMask;
-      csrs_.at(unsigned(cn)).write(value);
-    }
-
-    /// Return the value of the interrupt pending bit corresponding to the
-    /// given interrupt id.
-    bool readIp(unsigned id) const
-    { return readBit(id, CsrNumber::Setip0); }
-
-    /// Set the value of the interrupt pending bit corresponding to the
-    /// given interrupt id. Caller must check if write is legal.
-    void writeIp(unsigned id, bool flag)
-    { if (id) writeBit(id, CsrNumber::Setip0, flag); }
-
-    /// Return the value of the interrupt enabled bit corresponding to the
-    /// given interrupt id.
-    bool readIe(unsigned id) const
-    { return readBit(id, CsrNumber::Setie0); }
-
-    /// Set the value of the interrupt enabled bit corresponding to the
-    /// given interrupt id. Caller must check if write is legal.
-    void writeIe(unsigned id, bool flag)
-    { if (id) writeBit(id, CsrNumber::Setie0, flag); }
-
-  private:
-
-    Aplic *aplic_; // TODO(paul): use shared_ptr or weak_ptr?
-    std::string name_;
-    uint64_t addr_ = 0;
-    uint64_t size_ = 0;
-    unsigned hartCount_ = 0;
-    unsigned interruptCount_ = 0;
-    unsigned ipriolen_ = MaxIpriolen;
-    std::shared_ptr<Domain> parent_ = nullptr;
-    bool isMachine_ = true;   // Machine privilege.
-
-    std::vector<DomainCsr> csrs_;
-    std::vector<Idc> idcs_;
+    std::weak_ptr<Domain> parent_;
+    uint64_t base_;
+    uint64_t size_;
+    bool is_machine_;
+    std::vector<unsigned> hart_indices_;
     std::vector<std::shared_ptr<Domain>> children_;
-    std::vector<bool> activeHarts_;  // Hart active in this domain.
+    DirectDeliveryCallback direct_callback_ = nullptr;
+    MsiDeliveryCallback msi_callback_ = nullptr;
+    std::vector<uint8_t> xeip_bits_;
 
-    // Callback for direct interrupt delivery.
-    std::function<bool(unsigned hartIx, bool machine, bool ip)> deliveryFunc_ = nullptr;
-
-    // Callback for IMSIC interrupt delivery.
-    std::function<bool(uint64_t addr, unsigned size, uint64_t data)> imsicFunc_ = nullptr;
-
-  };
+    Domaincfg domaincfg_;
+    std::array<Sourcecfg, 1024> sourcecfg_;
+    uint32_t     mmsiaddrcfg_;
+    Mmsiaddrcfgh mmsiaddrcfgh_;
+    uint32_t     smsiaddrcfg_;
+    Smsiaddrcfgh smsiaddrcfgh_;
+    std::array<uint32_t, 32> setip_;
+    std::array<uint32_t, 32> setie_;
+    Genmsi genmsi_;
+    std::array<Target, 1024> target_;
+    std::vector<Idc> idcs_;
+};
 
 }

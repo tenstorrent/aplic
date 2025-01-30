@@ -1,127 +1,76 @@
 #pragma once
 
-#include <cstdint>
-#include <vector>
 #include <string>
-#include <unordered_map>
+#include <span>
+#include <vector>
+#include <memory>
+#include <cassert>
+
 #include "Domain.hpp"
 
+namespace TT_APLIC {
 
-namespace TT_APLIC
+class Aplic : public std::enable_shared_from_this<Aplic>
 {
-
-  struct Interrupt
-  {
-    Domain *domain;
-    unsigned id;
-  };
-
-  /// Model an advanced platform local interrupt controller
-  class Aplic
-  {
-  public:
-
-    /// Constructor. interruptCount is the largest supported interrupt id and
-    /// must be less than or equal to 1023.
-    Aplic(unsigned hartCount, unsigned interruptCount, bool autoDeliver);
-
-    /// Read a memory mapped register associated with this Aplic. Return true
-    /// on success. Return false leaving value unmodified if addr is not in the
-    /// range of this Aplic or if size/alignment is not valid.
-    bool read(uint64_t addr, unsigned size, uint64_t& value);
-
-    /// Write a memory mapped register associated with this Aplic. Return true
-    /// on success. Return false if addr is not in the range of this Aplic or if
-    /// size/alignment is not valid.
-    bool write(uint64_t addr, unsigned size, uint64_t value);
-
-    /// Set the state of the source of the given id to the given value. Return true on
-    /// success. Return false if id is out of bounds. If the state is equal to the state
-    /// at which the source is active then the corresponding interrupt becomes pending.
-    bool setSourceState(unsigned id, bool state);
-
-    /// Create a domain and make it a child of the given parent. Create a root domain if
-    /// parent is empty. Root domain must be created before all other domain and must have
-    /// machine privilege. A parent domain must be created before its child. Return
-    /// pointer to created domain or nullptr if we fail to create a domain.
-    std::shared_ptr<Domain> createDomain(const std::string& name, std::shared_ptr<Domain> parent,
-                                         uint64_t addr, uint64_t size, bool isMachine);
-
-    bool autoDeliveryEnabled() { return autoDeliver_; }
-    void enableAutoDelivery()
+public:
+    Aplic(unsigned num_harts, unsigned num_sources)
+        : num_harts_(num_harts), num_sources_(num_sources)
     {
-      for (auto i : undeliveredInterrupts_)
-        i.domain->deliverInterrupt(i.id);
-      autoDeliver_ = true;
-    }
-    void disableAutoDelivery() { autoDeliver_ = false; }
-
-    void enqueueInterrupt(Domain *domain, unsigned id);
-    bool deliverInterrupt(unsigned id);
-
-    /// Define a callback function for this Aplic to directly deliver/un-deliver an
-    /// interrupt to a hart. When an interrupt becomes active (ready for delivery) or
-    /// inactive, the Aplic will call this function which will should set/clear the M/S
-    /// external interrupt pending bit in the MIP CSR of that hart.
-    void setDeliveryMethod(std::function<bool(unsigned hartIx, bool machine, bool ip)> func)
-    {
-      deliveryFunc_ = func;
-      for (auto domain : domains_)
-        if (domain)
-          domain->setDeliveryMethod(func);
+        assert(num_harts <= 16384);
+        assert(num_sources < 1024);
+        source_states_.resize(num_sources_ + 1);
     }
 
-    /// Define a callback function for this Aplic to write to the IMSIC of a hart. When an
-    /// interrupt becomes active (ready for delivery), the Aplic will call this function
-    /// which should write to an IMIC address to set the M/S external interrupt pending
-    /// bit in the interrupt file of that IMSIC.
-    void setImsicMethod(std::function<bool(uint64_t addr, unsigned size, uint64_t data)> func)
+    std::shared_ptr<Domain> root() const { return root_; }
+    unsigned numHarts() const { return num_harts_; }
+    unsigned numSources() const { return num_sources_; }
+
+    std::shared_ptr<Domain> createDomain(
+        const std::string& name,
+        std::shared_ptr<Domain> parent,
+        uint64_t base,
+        uint64_t size,
+        bool is_machine,
+        std::span<const unsigned> hart_indices
+    );
+
+    void reset();
+
+    bool containsAddr(uint64_t addr) const;
+
+    bool read(uint64_t addr, size_t size, uint32_t& data);
+
+    bool write(uint64_t addr, size_t size, uint32_t data);
+
+    void setDirectCallback(DirectDeliveryCallback callback);
+
+    void setMsiCallback(MsiDeliveryCallback callback);
+
+    bool getSourceState(unsigned i) const { return source_states_.at(i); }
+
+    void setSourceState(unsigned i, bool state);
+
+    bool forwardViaMsi(unsigned i);
+
+    bool autoForwardViaMsi = true;
+
+private:
+    std::shared_ptr<Domain> findDomainByAddr(uint64_t addr) const
     {
-      imsicFunc_ = func;
-      for (auto domain : domains_)
-        if (domain)
-          domain->setImsicMethod(func);
+        for (auto domain : domains_) {
+            if (domain->containsAddr(addr))
+                return domain;
+        }
+        return nullptr;
     }
 
-    bool contains_addr(uint64_t addr)
-    {
-      for (auto domain : domains_)
-        if (domain->contains_addr(addr))
-          return true;
-      return false;
-    }
-
-  protected:
-
-    /// Return a pointer to the domain covering the given address. Return
-    /// nullptr if the address is not valid (must be word aligned) or is out of
-    /// bounds.
-    std::shared_ptr<Domain> findDomainByAddr(uint64_t addr)
-    {
-      for (auto domain : domains_)
-        if (domain->contains_addr(addr))
-          return domain;
-      return nullptr;
-    }
-
-  private:
-
-    unsigned hartCount_ = 0;
-    unsigned interruptCount_ = 0;
-    bool autoDeliver_ = false;
-    std::shared_ptr<Domain> root_ = nullptr;
+    unsigned num_harts_;
+    unsigned num_sources_;
+    std::shared_ptr<Domain> root_;
     std::vector<std::shared_ptr<Domain>> domains_;
+    std::vector<bool> source_states_;
+    DirectDeliveryCallback direct_callback_ = nullptr;
+    MsiDeliveryCallback msi_callback_ = nullptr;
+};
 
-    // Current state of interrupt sources
-    std::vector<bool> interruptStates_;
-
-    // Interrupts ready to be delivered
-    std::vector<Interrupt> undeliveredInterrupts_;
-
-    // Callback for direct interrupt delivery.
-    std::function<bool(unsigned hartIx, bool machine, bool ip)> deliveryFunc_ = nullptr;
-
-    // Callback for IMSIC interrupt delivery.
-    std::function<bool(uint64_t addr, unsigned size, uint64_t data)> imsicFunc_ = nullptr;
-  };
 }
