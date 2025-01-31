@@ -34,12 +34,12 @@ test_01_domaincfg()
 {
   unsigned hartCount = 1;
   unsigned interruptCount = 1;
-  auto aplic = std::make_shared<Aplic>(hartCount, interruptCount);
+  Aplic aplic(hartCount, interruptCount);
 
   uint64_t addr = 0x1000000;
   uint64_t domainSize = 32*1024;
   unsigned hartIndices[] = {0};
-  auto root = aplic->createDomain("root", nullptr, addr, domainSize, Machine, hartIndices);
+  auto root = aplic.createDomain("root", nullptr, addr, domainSize, Machine, hartIndices);
 
   root->writeDomaincfg(0xfffffffe);
   uint32_t domaincfg = root->readDomaincfg();
@@ -55,13 +55,13 @@ test_02_sourcecfg()
 {
   unsigned hartCount = 1;
   unsigned interruptCount = 1;
-  auto aplic = std::make_shared<Aplic>(hartCount, interruptCount);
+  Aplic aplic(hartCount, interruptCount);
 
   uint64_t addr = 0x1000000;
   uint64_t domainSize = 32*1024;
   unsigned hartIndices[] = {0};
-  auto root = aplic->createDomain("root", nullptr, addr, domainSize, Machine, hartIndices);
-  auto child = aplic->createDomain("child", root, addr+domainSize, domainSize, Supervisor, hartIndices);
+  auto root = aplic.createDomain("root", nullptr, addr, domainSize, Machine, hartIndices);
+  auto child = aplic.createDomain("child", root, addr+domainSize, domainSize, Supervisor, hartIndices);
 
   // For a system with N interrupt sources, write a non-zero value to a sourcecfg[i] where i > N; expect to read 0.
   root->writeSourcecfg(2, 0x1);
@@ -93,13 +93,13 @@ test_03_idelivery()
 {
   unsigned hartCount = 1;
   unsigned interruptCount = 1; 
-  auto aplic = std::make_shared<Aplic>(hartCount, interruptCount);
+  Aplic aplic(hartCount, interruptCount);
 
   uint64_t addr = 0x1000000;
   uint64_t domainSize = 32 * 1024;
   unsigned hartIndices[] = {0};
-  auto root = aplic->createDomain("root", nullptr, addr, domainSize, Machine, hartIndices);
-  aplic->setDirectCallback(directCallback);
+  auto root = aplic.createDomain("root", nullptr, addr, domainSize, Machine, hartIndices);
+  aplic.setDirectCallback(directCallback);
 
   Domaincfg dcfg{};
   dcfg.dm = 0;
@@ -118,7 +118,7 @@ test_03_idelivery()
 
   root->writeSetienum(1);
 
-  aplic->setSourceState(1, true); 
+  aplic.setSourceState(1, true); 
   assert(interrupts.size() == 1);
 
   std::cerr << "Interrupt successfully delivered to hart 0 in machine mode with state: on.\n";
@@ -141,13 +141,13 @@ test_04_iforce()
 {
   unsigned hartCount = 2; 
   unsigned interruptCount = 1;
-  auto aplic = std::make_shared<Aplic>(hartCount, interruptCount);
+  Aplic aplic(hartCount, interruptCount);
 
   uint64_t addr = 0x1000000;
   uint64_t domainSize = 32 * 1024;
   unsigned hartIndices[] = {0};
-  auto root = aplic->createDomain("root", nullptr, addr, domainSize, Machine, hartIndices);
-  aplic->setDirectCallback(directCallback);
+  auto root = aplic.createDomain("root", nullptr, addr, domainSize, Machine, hartIndices);
+  aplic.setDirectCallback(directCallback);
 
   Domaincfg dcfg{};
   dcfg.dm = 0; 
@@ -168,13 +168,13 @@ test_04_iforce()
   root->writeSetie(0, 2); 
   std::cerr << "Set ithreshold to 0x0.\n";
 
-  aplic->setSourceState(1, true); 
+  aplic.setSourceState(1, true); 
   //assert((interrupts.size() == 3) && interruptStateMap[0]); // TODO
 
   root->writeIforce(0, 0);
   std::cerr << "Wrote 0x0 to iforce for valid hart.\n";
 
-  aplic->setSourceState(1, true); 
+  aplic.setSourceState(1, true); 
   // assert(interrupts.size() == 4 && !interruptStateMap[0]); // TODO
 
   root->writeIforce(0, 1);
@@ -201,13 +201,13 @@ test_05_ithreshold()
 {
   unsigned hartCount = 1;
   unsigned interruptCount = 3;
-  auto aplic = std::make_shared<Aplic>(hartCount, interruptCount);
+  Aplic aplic(hartCount, interruptCount);
 
   uint64_t addr = 0x1000000;
   uint64_t domainSize = 32 * 1024;
   unsigned hartIndices[] = {0};
-  auto root = aplic->createDomain("root", nullptr, addr, domainSize, Machine, hartIndices);
-  aplic->setDirectCallback(directCallback);
+  auto root = aplic.createDomain("root", nullptr, addr, domainSize, Machine, hartIndices);
+  aplic.setDirectCallback(directCallback);
 
   Domaincfg dcfg{};
   dcfg.dm = 0; 
@@ -243,11 +243,11 @@ test_05_ithreshold()
   root->writeSetie(0, (1 << 1) | (1 << 2) | (1 << 3)); // Enable interrupts 1, 2, 3
   std::cerr << "Set pending and enable bits for interrupts 1, 2, and 3.\n";
 
-  aplic->setSourceState(1, true);
+  aplic.setSourceState(1, true);
   assert(interruptStateMap[0]);
-  aplic->setSourceState(2, true);
+  aplic.setSourceState(2, true);
   assert(interruptStateMap[0]);
-  aplic->setSourceState(3, true);
+  aplic.setSourceState(3, true);
   // std::cerr << "SIZE: " << interrupts.size() << "\n";
   //assert((interrupts.size() == 5 || interrupts.size() == 11) && interruptStateMap[0]); // TODO
 
@@ -256,8 +256,8 @@ test_05_ithreshold()
   std::cerr << "Set ithreshold to 0x1.\n";
 
   interrupts.clear();
-  aplic->setSourceState(1, true); 
-  aplic->setSourceState(2, true); 
+  aplic.setSourceState(1, true); 
+  aplic.setSourceState(2, true); 
   //assert(interrupts.size() == 1); // TODO
   std::cerr << "Verified only priority 0 interrupt is delivered when ithreshold = 0x1.\n";
 
@@ -298,9 +298,9 @@ test_05_ithreshold()
   std::cerr << "Set domaincfg.IE = 0.\n";
 
   interrupts.clear();
-  aplic->setSourceState(1, true);
-  aplic->setSourceState(2, true);
-  aplic->setSourceState(3, true);
+  aplic.setSourceState(1, true);
+  aplic.setSourceState(2, true);
+  aplic.setSourceState(3, true);
   assert(interrupts.empty());
   std::cerr << "Verified no interrupts are delivered when domaincfg.IE = 0.\n";
   std::cerr << "Test test_ithreshold passed successfully.\n";
@@ -312,12 +312,12 @@ test_06_topi()
 {
   unsigned hartCount = 1;
   unsigned interruptCount = 7; 
-  auto aplic = std::make_shared<Aplic>(hartCount, interruptCount);
+  Aplic aplic(hartCount, interruptCount);
 
   uint64_t addr = 0x1000000;
   uint64_t domainSize = 32 * 1024;
   unsigned hartIndices[] = {0};
-  auto root = aplic->createDomain("root", nullptr, addr, domainSize, Machine, hartIndices);
+  auto root = aplic.createDomain("root", nullptr, addr, domainSize, Machine, hartIndices);
 
   Domaincfg dcfg{};
   dcfg.dm = 0; 
@@ -389,14 +389,14 @@ test_07_claimi()
 {
   unsigned hartCount = 1;
   unsigned interruptCount = 3; 
-  auto aplic = std::make_shared<Aplic>(hartCount, interruptCount);
+  Aplic aplic(hartCount, interruptCount);
 
 
   uint64_t addr = 0x1000000;
   uint64_t domainSize = 32 * 1024;
   unsigned hartIndices[] = {0};
-  auto root = aplic->createDomain("root", nullptr, addr, domainSize, Machine, hartIndices);
-  aplic->setDirectCallback(directCallback);
+  auto root = aplic.createDomain("root", nullptr, addr, domainSize, Machine, hartIndices);
+  aplic.setDirectCallback(directCallback);
 
   Domaincfg dcfg{};
   dcfg.dm = 0;
@@ -426,14 +426,14 @@ test_07_claimi()
   root->writeTarget(2, tgt.value);
   std::cerr << "Set priorities for interrupts: 1=1, 2=2.\n";
 
-  aplic->setSourceState(1, true);
+  aplic.setSourceState(1, true);
   uint32_t claimi_value = root->readClaimi(0);
   std::cerr << "Claimed interrupt: " << (claimi_value >> 16) << " (priority: " << (claimi_value & 0xFF) << ")\n";
   assert((claimi_value >> 16) == 1);
   assert((claimi_value & 0xFF) == 1);
 
 
-  aplic->setSourceState(2, true);
+  aplic.setSourceState(2, true);
   claimi_value = root->readClaimi(0);
   std::cerr << "Claimed interrupt: " << (claimi_value >> 16) << " (priority: " << (claimi_value & 0xFF) << ")\n";
   //assert((claimi_value >> 16) == 2); // TODO
@@ -454,14 +454,14 @@ test_08_setipnum_le()
 {
   unsigned hartCount = 1;
   unsigned interruptCount = 10; 
-  auto aplic = std::make_shared<Aplic>(hartCount, interruptCount);
+  Aplic aplic(hartCount, interruptCount);
 
 
   uint64_t addr = 0x1000000;
   uint64_t domainSize = 32 * 1024;
   unsigned hartIndices[] = {0};
-  auto root = aplic->createDomain("root", nullptr, addr, domainSize, Machine, hartIndices);
-  aplic->setDirectCallback(directCallback);
+  auto root = aplic.createDomain("root", nullptr, addr, domainSize, Machine, hartIndices);
+  aplic.setDirectCallback(directCallback);
 
 
   Domaincfg dcfg{};
@@ -510,13 +510,13 @@ test_09_setipnum_be()
 {
   unsigned hartCount = 1;
   unsigned interruptCount = 10; 
-  auto aplic = std::make_shared<Aplic>(hartCount, interruptCount);
+  Aplic aplic(hartCount, interruptCount);
 
 
   uint64_t addr = 0x1000000;
   uint64_t domainSize = 32 * 1024;
   unsigned hartIndices[] = {0};
-  auto root = aplic->createDomain("root", nullptr, addr, domainSize, Machine, hartIndices);
+  auto root = aplic.createDomain("root", nullptr, addr, domainSize, Machine, hartIndices);
 
 
   Domaincfg dcfg{};
@@ -565,12 +565,12 @@ test_10_targets()
 {
   unsigned hartCount = 4;  // Multiple harts to validate configurations
   unsigned interruptCount = 1023; 
-  auto aplic = std::make_shared<Aplic>(hartCount, interruptCount);
+  Aplic aplic(hartCount, interruptCount);
 
   uint64_t addr = 0x1000000;
   uint64_t domainSize = 32 * 1024;
   unsigned hartIndices[] = {0, 1, 2, 3};
-  auto root = aplic->createDomain("root", nullptr, addr, domainSize, Machine, hartIndices);
+  auto root = aplic.createDomain("root", nullptr, addr, domainSize, Machine, hartIndices);
 
   // MSI delivery mode
   Domaincfg dcfg{};
@@ -640,7 +640,7 @@ test_11_MmsiAddressConfig()
   unsigned interruptCount = 33;
   uint64_t addr = 0x1000000;
   uint64_t domainSize = 32 * 1024;
-  auto aplic = std::make_shared<Aplic>(hartCount, interruptCount);
+  Aplic aplic(hartCount, interruptCount);
 
   aplic->setDirectCallback(directCallback);
   aplic->setMsiCallback(imsicCallback);
@@ -744,13 +744,13 @@ test_12_SmsiAddressConfig()
 {
   unsigned hartCount = 2;  
   unsigned interruptCount = 1;
-  auto aplic = std::make_shared<Aplic>(hartCount, interruptCount);
+  Aplic aplic(hartCount, interruptCount);
 
   uint64_t addr = 0x1000000;
   uint64_t domainSize = 32 * 1024;
   unsigned hartIndices[] = {0, 1};
-  auto root = aplic->createDomain("root", nullptr, addr, domainSize, Machine, hartIndices);
-  auto child = aplic->createDomain("child", root, addr + domainSize, domainSize, Supervisor, hartIndices);
+  auto root = aplic.createDomain("root", nullptr, addr, domainSize, Machine, hartIndices);
+  auto child = aplic.createDomain("child", root, addr + domainSize, domainSize, Supervisor, hartIndices);
 
   uint32_t base_ppn = 0x234;  // 12-bit PPN
   uint32_t lhxs = 0b101;      // 3-bit field

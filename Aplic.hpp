@@ -10,7 +10,7 @@
 
 namespace TT_APLIC {
 
-class Aplic : public std::enable_shared_from_this<Aplic>
+class Aplic
 {
 public:
     Aplic(unsigned num_harts, unsigned num_sources)

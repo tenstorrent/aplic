@@ -3,7 +3,7 @@
 
 using namespace TT_APLIC;
 
-Domain::Domain(const std::shared_ptr<const Aplic>& aplic, std::string_view name, std::shared_ptr<Domain> parent, uint64_t base, uint64_t size, Privilege privilege, std::span<const unsigned> hart_indices)
+Domain::Domain(const Aplic *aplic, std::string_view name, std::shared_ptr<Domain> parent, uint64_t base, uint64_t size, Privilege privilege, std::span<const unsigned> hart_indices)
     : aplic_(aplic), name_(name), parent_(parent), base_(base), size_(size), privilege_(privilege), hart_indices_(hart_indices.begin(), hart_indices.end())
 {
     unsigned num_harts = aplic->numHarts();
@@ -28,7 +28,7 @@ void Domain::reset()
         setie_[i] = 0;
     }
 
-    unsigned num_harts = aplic()->numHarts();
+    unsigned num_harts = aplic_->numHarts();
     for (unsigned i = 0; i < num_harts; i++)
         xeip_bits_[i] = 0;
 
@@ -41,7 +41,7 @@ void Domain::reset()
 
 void Domain::updateTopi()
 {
-    unsigned num_sources = aplic()->numSources();
+    unsigned num_sources = aplic_->numSources();
     for (auto hart_index : hart_indices_) {
         idcs_[hart_index].topi = Topi{};
     }
@@ -69,7 +69,7 @@ void Domain::inferXeipBits()
             if (idcs_[hart_index].iforce)
                 xeip_bits_[hart_index] = 1;
         }
-        unsigned num_sources = aplic()->numSources();
+        unsigned num_sources = aplic_->numSources();
         for (unsigned i = 1; i <= num_sources; i++) {
             unsigned hart_index = target_[i].hart_index;
             unsigned priority = target_[i].iprio;
@@ -93,8 +93,8 @@ void Domain::runCallbacksAsRequired()
             if (prev_xeip_bits[hart_index] != xeip_bit and direct_callback_)
                 direct_callback_(hart_index, privilege_, xeip_bit);
         }
-    } else if (aplic()->autoForwardViaMsi) {
-        unsigned num_sources = aplic()->numSources();
+    } else if (aplic_->autoForwardViaMsi) {
+        unsigned num_sources = aplic_->numSources();
         for (unsigned i = 0; i <= num_sources; i++) {
             if (readyToForwardViaMsi(i))
                 forwardViaMsi(i);
@@ -128,7 +128,7 @@ bool Domain::rectifiedInputValue(unsigned i) const
 {
     if (not sourceIsActive(i))
         return false;
-    bool state = aplic()->getSourceState(i);
+    bool state = aplic_->getSourceState(i);
     switch (sourcecfg_[i].sm) {
         case Detached:
             return false;
@@ -144,11 +144,11 @@ bool Domain::rectifiedInputValue(unsigned i) const
 
 bool Domain::sourceIsImplemented(unsigned i) const
 {
-    if (i == 0 or i > aplic()->numSources())
+    if (i == 0 or i > aplic_->numSources())
         return false;
     if (parent() and not parent()->sourcecfg_[i].d)
         return false;
     return true;
 }
 
-std::shared_ptr<Domain> Domain::root() const { return aplic_.lock()->root(); }
+std::shared_ptr<Domain> Domain::root() const { return aplic_->root(); }

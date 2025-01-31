@@ -479,7 +479,7 @@ public:
     void writeClaimi(unsigned /*hart_index*/, uint32_t /*value*/) {}
 
 private:
-    Domain(const std::shared_ptr<const Aplic>& aplic, std::string_view name, std::shared_ptr<Domain> parent, uint64_t base, uint64_t size, Privilege privilege, std::span<const unsigned> hart_indices);
+    Domain(const Aplic *aplic, std::string_view name, std::shared_ptr<Domain> parent, uint64_t base, uint64_t size, Privilege privilege, std::span<const unsigned> hart_indices);
 
     uint32_t read(uint64_t addr)
     {
@@ -749,9 +749,8 @@ private:
 
     std::shared_ptr<Domain> root() const;
     std::shared_ptr<Domain> parent() const { return parent_.lock(); }
-    std::shared_ptr<const Aplic> aplic() const { return aplic_.lock(); }
 
-    std::weak_ptr<const Aplic> aplic_;
+    const Aplic * aplic_;
     std::string name_;
     std::weak_ptr<Domain> parent_;
     uint64_t base_;

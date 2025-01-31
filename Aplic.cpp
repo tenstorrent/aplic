@@ -67,7 +67,7 @@ std::shared_ptr<Domain> Aplic::createDomain(
         }
     }
 
-    auto domain = std::shared_ptr<Domain>(new Domain(shared_from_this(), name, parent, base, size, privilege, hart_indices));
+    auto domain = std::shared_ptr<Domain>(new Domain(this, name, parent, base, size, privilege, hart_indices));
     if (parent)
         parent->children_.push_back(domain);
     if (!root_)
