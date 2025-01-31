@@ -1,139 +1,196 @@
-APLIC C++ model
+# APLIC C++ Model
 
-# Introduction
+## Introduction
 
-This is a C++ model of the RISCV Advanced Platform Interrupt Controller. The
-Aplic is a memory mapped device with an address range and a read/write
-interface. The system interacts with the Aplic through the Aplic
-read/write/SetSourceState methods. The system uses the setSourceState method of
-the Aplic to model a change in the interrupt source state of an interrupt. The
-Aplic will evaluate the effects of the setSourceState and, if the required
-conditions are met, it will deliver/un-deliver an interrupt to a hart in the
-system. The interrupt delivery details are not part of the Aplic code: The Aplic
-relies on a couple of callbacks to perform the delivery. It is up to the code
-instantiating the Aplic to define the callback methods. There is one callback
-for direct (non MSI) interrupt delivery and one for message based (MSI)
-delivery. Here's an overview of the usage mode of the Aplic:
+This is a C++ model of the RISC-V Advanced Platform-Level Interrupt Controller
+(APLIC). For background information on the APLIC, see the [Advanced Interrupt
+Architecture Specification](https://github.com/riscv/riscv-aia).
 
-1. Instantiate an Aplic associating it with a memory address, a stride (address
-offset between domains), a hart count, a domain count, and an interrupt device
-count.
+The APLIC is a memory-mapped device with a read/write interface. The system
+interacts with the APLIC through the `read`, `write`, and `setSourceState`
+methods of the `Aplic` class. The `setSourceState` method is used to model a
+change in the state of an interrupt source. The model will evaluate the effects
+of the `setSourceState` and will, if the required conditions are met,
+deliver/undeliver an interrupt to a hart in the system.
+
+The details of interrupt delivery are outside the scope of the model. Whenever
+an interrupt is ready for delivery, the model will invoke one of two
+user-provided callbacks to carry out the delivery of the interrupt. Which
+callback is invoked depends on the current delivery mode, which may be either
+direct delivery or MSI delivery.
+
+Here's an overview of the usage of the `Aplic` class:
+
+1. Instantiate an `Aplic` with a hart count and an interrupt source count.
 
 2. Define the direct delivery callback or the MSI delivery callback or both.
 
-3. Define the domains of the Aplic starting with the root domain and associating
-each non-root domain with a parent domain.
+3. Define the domains of the APLIC starting with the root domain and
+   associating all other domains with a parent domain.
 
-4. Invoke the Aplic read method whenever there is a memory read operation targeting
-an address in the address range of the Aplic.
+4. Invoke the `read` and `write` methods whenever there is a load or store
+   operation to an address within any of the APLIC's domain control regions.
 
-5. Invoke the Aplic write method whenever there is a memory write operation targeting
-an address in the address range of the Aplic.
+5. Invoke the `setSourceState` method whenever there is a change in the state
+   of an interrupt source associated with the APLIC.
 
-6. Invoke the setSourceState method whenever there is a change in the state of
-an interrupt source associated with the Aplic.
+## Compiling
 
-
-# Compiling
-You would need a C++ compiler supporting c++20 or later as well as GNU make.
+You would need a C++ compiler supporting C++20 or later as well as GNU make.
 To compile, issue the command:
 ```
 make
 ```
 
-# Instantiating an Aplic
+## Instantiating an Aplic
 
-The constructor requires the memory address of the Aplic device, the number of
-controlled harts, the stride between memory regions associated with the domains
-of the Aplic, the domain count, and the interrupt source count. If the interrupt
-source count is n, then the interrupt source ids will be 1 to n-1.
-Here's a example:
+The `Aplic` constructor requires the number of controlled harts (1 to 16,384)
+and the number of interrupt sources (1 to 1023). If the interrupt source count
+is `N`, then the interrupt source IDs will be 1 to `N`.
+
+Example usage:
 ```
-  unsigned hartCount = 2;
-  unsigned interruptCount = 33;
-  unsigned domainCount = 2;
-
-  uint64_t addr = 0x1000000;
-  uint64_t stride = 32*1024;
-  Aplic aplic(addr, stride, hartCount, domainCount, interruptCount);
+unsigned num_harts = 2;
+unsigned num_sources = 33;
+TT_APLIC::Aplic aplic(num_harts, num_sources);
 ```
 
-# Instantiating a Domain
+## Instantiating Domains
 
-A domain is instantiated from an Aplic object using the createDomain method. The
-root domain must be created first. A child domain must be created after its
-parent. A domain is associated with a memory address, a parent
-domain, and a privilege mode. The parent domain of the root domain is the null
-pointer. The address must have a value that matches the pattern "addr + n*stride"
-where addr is the address of the Aplic, stride is its stride, and n is an integer
-between 0 and the one minus the associated domain count. The root domain
-must be at machine privilege.
+A domain is added to an `Aplic` instance using the `createDomain` method.
+
+The `name` parameter allows for assigning a meaningful label to the domain,
+which can be useful for logging and debugging. If unique names are used, it
+also allows for retrieving domains via the `findDomainByName` method.
+
+The `parent` parameter designates which existing domain is the parent of the
+domain being created (thus, parent domains must be created before their
+children). When creating the root domain, pass `nullptr`.
+
+The `base` and `size` paramters specify the region of memory occupied by the
+domain's control region. This region is subject to the following constraints:
+
+- An alignment of 4 KiB
+- A size which is a multiple of 4 KiB
+- A minimum size of 16 KiB
+- No overlap with control regions of other domains
+
+The `privilege` parameter indicates the privilege level of the domain. The enum
+values `Machine` and `Supervisor` are used for machine-level and
+supervisor-level domains respectively. As per the spec, the root domain must be
+at machine-level, and the parent of any supervisor-level domain must be a
+machine-level domain.
+
+The `hart_indices` parameter indicates which harts belong to this domain. These
+will constitute the legal values for the hart index field of the target CSR and
+the genmsi CSR in the case of MSI delivery mode. As per the spec, a hart may
+only belong to one domain at each privilege level, and any harts which belong
+to a supervisor-level domain must also belong to its machine-level parent
+domain.
+
+Upon success, `createDomain` will return a pointer to the newly created domain.
+This pointer can be passed to subsequent calls of `createDomain` via the
+`parent` parameter to construct a domain hierarchy.
+
+Note that the order in which child domains are created is significant. The
+`sourcecfg` CSRs contain a "child index" field which designates which child
+domain to delegate an interrupt source to. The value of this field corresponds
+to the order in which child domains are created for a given parent.
+
+If `createDomain` is unable to instantiate a domain, it will throw an exception
+with a diagnostic message.
+
+Example usage:
 ```
-  bool isMachine = true;
-  auto root = aplic.createDomain(nullptr, addr, isMachine);
-```
-
-## Instantiating a Child domain
-
-We must pass a parent domain to the createDomain method. Here's sample code
-instantiating a supervisor privilege domain at domain slot 1:
-
-```
-  isMachine = false;
-  auto child = aplic.createDomain(root, addr + 1*stride, isMachine);
-```
-
-The createDomain method will return a nullptr if the given address is not
-valid or if it is already occupied by another domain.
-
-
-# Backdoor Interactions with the Aplic
-
-The system will typically interact with the Aplic through the read, write, and
-setSourceState methods. The read/write methods are usually invoked in support of
-load/store instructions running on the system harts. The setSourceState is
-invoked by asynchronous interrupts coming from IO device models or from an
-interrupt generation module in the test bench. It is possible to invoke the
-read/write/setSourceState directly to change the APLIC state independent of
-load/store instructions or IO device state.
-
-
-# Configuring the Domain Delivery Mode
-
-A domain is configured by writing to its "domaincfg" CSR. Here's an example
-of configuring the root domain for IMSIC delivery and enabling its interrupts.
-
-```
-  // Read the domain config CSR.
-  uint64_t value = 0;
-  root->read(root->csrAddress(CsrNumber::Domaincfg), sizeof(CsrValue), value);
-
-  // Set the direct delivery mode. Set the interrupt enable bit.
-  Domaincfg dcfg{CsrValue(value)};
-  dcfg.bits_.dm_ = 0;
-  dcfg.bits_.ie_ = 1;
-
-  // Write the value back.
-  root->write(root->csrAddress(CsrNumber::Domaincfg), sizeof(CsrValue), dcfg.value_);
+uint64_t base = 0x1000000;
+uint64_t size = 0x8000;
+unsigned hart_indices[] = {0, 1, 2, 3};
+auto root = aplic.createDomain("root", nullptr, base, size, TT_APLIC::Machine, hart_indices);
+auto child = aplic.createDomain("child", root, base+size, size, TT_APLIC::Supervisor, hart_indices);
 ```
 
-The write method requires an address (of a memory mapped register), the
-csrAddress method maps a CSR number to a memory address.
+## Accessing Domain CSRs
 
-To configure a domain for direct interrupt deliver, the DM field of the
-domaincfg CSR is set to 1:
+CSRs within a domain's control region can be accessed in two ways: via
+dedicated per-CSR read and write methods of the `Domain` class and via the
+`read` and `write` methods of the `Aplic` class.
+
+Which interface is used will depend on context. Typically, when transforming
+load and store operations into reads and writes to the APLIC, the `Aplic`
+interface will be used; and when needing to perform an access to a specific
+CSR, the `Domain` interface will be used.
+
+### Domain Class CSR Interface
+
+For each CSR in an APLIC domain, the `Domain` class has a method for reading
+and a method for writing that CSR. For example, the `domaincfg` CSR has
+`readDomaincfg` and `writeDomaincfg`.
+
+Some CSRs are numbered, such as `sourcecfg[i]`. For these CSRs, the first
+parameter to the read and write methods is an index.
+
+The read methods all have a return type of `uint32_t`, and the write methods
+all have a parameter of type `uint32_t` for the write data. However, some CSRs
+have data types for representing the individual fields of the CSR, such as
+`Domaincfg`, `Target`, and `Sourcecfg`.
+
+Here is an example of how to use these methods:
+
 ```
-   dcfg.bits_.dm_ = 1;
+uint32_t value = root->readDomaincfg();
+
+Domaincfg domaincfg{value};
+domaincfg.dm = MSI;
+domaincfg.ie = 1;
+
+root->writeDomaincfg(domaincfg.value);
 ```
 
-# Configuring Domain Interrupt Sources
+These methods enforce various constraints as required by the spec, such as
+read-only, WARL, and so forth.
 
-An interrupt source is configured in a domain by writing to the address
-corresponding to its configuration CSR in that domain.
+## Aplic Class CSR Interface
+
+As mentioned, in addition to the per-CSR read and write methods in the `Domain`
+class, CSRs can also be accessed via the `read` and `write` methods of the
+`Aplic` class.
+
+Here is an example usage:
+
 ```
-  // Configure source interrupt 1 in root domain as delegated to child 0.
-  Sourcecfg cfg1{0};
-  cfg1.bits_.d_ = true;
-  cfg1.bits_.child_ = 0;
-  aplic.write(root->csrAddress(CsrNumber::Sourcecfg1), sizeof(CsrValue), cfg1.value_);
+size_t size = 4;
+uint32_t write_data = 0xdeadbeef;
+aplic.write(addr, size, data);
+
+uint32_t read_data;
+aplic.read(addr, size, data);
 ```
+
+These methods check for correct size and alignment and return a boolean
+indicating if the access was successful. The read method, therefore, returns
+its data by means of an out parameter.
+
+The `containsAddr` method can be used to determine if a given address falls
+within one of the control regions for a domain within the APLIC.
+
+## Automatic Forwarding of Interrupts via MSI
+
+By default, for MSI delivery mode, when an interrupt is ready to be forwarded
+via MSI, the model will do so automatically. Specifically, it will invoke the
+provided MSI callback and clear the interrupt pending bit for the appropriate
+source.
+
+However, if this behavior is undesired, there is an option to disable it and to
+only forward interrupts via MSI when explicitly instructed to do so. The
+`Aplic` class has a member called `autoForwardViaMsi`, which is true by
+default. If set to false, an interrupt will only be forwarded via MSI when the
+`forwardViaMsi` method is invoked with the interrupt source ID.
+
+This method returns a boolean indicating whether the interrupt of the given ID
+was ready to be forwarded. If not, the method does nothing and returns false.
+
+## Reset
+
+The state of the APLIC model can be reset at any time by invoking the `reset`
+method. This will leave the domain hierarchy and callback methods unchanged,
+but will reset all of the CSRs to their initial values.
