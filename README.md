@@ -115,10 +115,11 @@ CSRs within a domain's control region can be accessed in two ways: via
 dedicated per-CSR read and write methods of the `Domain` class and via the
 `read` and `write` methods of the `Aplic` class.
 
-Which interface is used will depend on context. Typically, when transforming
-load and store operations into reads and writes to the APLIC, the `Aplic`
-interface will be used; and when needing to perform an access to a specific
-CSR, the `Domain` interface will be used.
+Which interface is used will depend on context. If the only thing you know is
+that a load or store is being made to some address within an APLIC domain, you
+will use the `Aplic`'s read/write interface. But if, for some reason, you want
+to access a particular CSR in some domain, it's most convenient to use the
+interface provided by the `Domain` class.
 
 ### Domain Class CSR Interface
 
