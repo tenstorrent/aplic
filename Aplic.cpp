@@ -78,6 +78,22 @@ std::shared_ptr<Domain> Aplic::createDomain(
     return domain;
 }
 
+std::shared_ptr<Domain> Aplic::findDomainByName(std::string_view name) const
+{
+    for (auto domain : domains_)
+        if (domain->name_ == name)
+            return domain;
+    return nullptr;
+}
+
+std::shared_ptr<Domain> Aplic::findDomainByAddr(uint64_t addr) const
+{
+    for (auto domain : domains_)
+        if (domain->containsAddr(addr))
+            return domain;
+    return nullptr;
+}
+
 void Aplic::reset()
 {
     for (unsigned i = 0; i <= num_sources_; i++)

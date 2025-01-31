@@ -34,6 +34,10 @@ public:
         std::span<const unsigned> hart_indices
     );
 
+    std::shared_ptr<Domain> findDomainByName(std::string_view name) const;
+
+    std::shared_ptr<Domain> findDomainByAddr(uint64_t addr) const;
+
     void reset();
 
     bool containsAddr(uint64_t addr) const;
@@ -55,15 +59,6 @@ public:
     bool autoForwardViaMsi = true;
 
 private:
-    std::shared_ptr<Domain> findDomainByAddr(uint64_t addr) const
-    {
-        for (auto domain : domains_) {
-            if (domain->containsAddr(addr))
-                return domain;
-        }
-        return nullptr;
-    }
-
     unsigned num_harts_;
     unsigned num_sources_;
     std::shared_ptr<Domain> root_;
