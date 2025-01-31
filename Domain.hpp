@@ -694,6 +694,8 @@ private:
     {
         if (i == 0)
             return false;
+        if (sourcecfg_.at(i).dx.d)
+            return false;
         return sourcecfg_.at(i).d0.sm != Inactive;
     }
 
