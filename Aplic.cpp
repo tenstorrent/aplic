@@ -28,10 +28,10 @@ std::shared_ptr<Domain> Aplic::createDomain(
         throw std::runtime_error("first domain created must be root\n");
 
     if (not parent and not is_machine)
-        throw std::runtime_error("root domain must be at machine privilege\n");
+        throw std::runtime_error("root domain must be machine-level\n");
 
     if (not is_machine and not parent->is_machine_)
-        throw std::runtime_error("supervisor parent must be machine\n");
+        throw std::runtime_error("parent of supervisor-level domain must be machine-level\n");
 
     if (root_ and not parent)
         throw std::runtime_error("cannot have more than one root domain\n");
