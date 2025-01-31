@@ -152,7 +152,7 @@ union Sourcecfg {
             value = 0;
         else if (dx.d and d1.child_index >= num_children)
             d1.child_index = 0;
-        if (dx.d and (d0.sm == 2 or d0.sm == 3))
+        if (not dx.d and (d0.sm == 2 or d0.sm == 3))
             d0.sm = 0;
     }
 
