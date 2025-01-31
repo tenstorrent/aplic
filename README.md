@@ -159,12 +159,15 @@ class, CSRs can also be accessed via the `read` and `write` methods of the
 Here is an example usage:
 
 ```
-size_t size = 4;
-uint32_t write_data = 0xdeadbeef;
-aplic.write(addr, size, data);
+uint64_t addr = 0x1000000;
+if (aplic.containsAddr(addr)) {
+    size_t size = 4;
+    uint32_t write_data = 0xdeadbeef;
+    aplic.write(addr, size, write_data);
 
-uint32_t read_data;
-aplic.read(addr, size, data);
+    uint32_t read_data;
+    aplic.read(addr, size, read_data);
+}
 ```
 
 These methods check for correct size and alignment and return a boolean
