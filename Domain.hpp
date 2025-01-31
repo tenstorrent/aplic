@@ -193,6 +193,24 @@ class Domain
 
 public:
 
+    const std::string& name() const { return name_; }
+    std::shared_ptr<Domain> root() const;
+    std::shared_ptr<Domain> parent() const { return parent_.lock(); }
+
+    uint64_t base() const { return base_; }
+    uint64_t size() const { return size_; }
+    Privilege privilege() const { return privilege_; }
+    std::span<const unsigned> hartIndices() const { return hart_indices_; }
+
+    size_t numChildren() const { return children_.size(); }
+    std::shared_ptr<Domain> child(unsigned index) { return children_.at(index); }
+    std::shared_ptr<const Domain> child(unsigned index) const { return children_.at(index); }
+
+    auto begin()        { return children_.begin(); }
+    auto end()          { return children_.end(); }
+    auto begin() const  { return children_.begin(); }
+    auto end() const    { return children_.end(); }
+
     bool overlaps(uint64_t base, uint64_t size) const {
         return (base < (base_ + size_)) and (base_ < (base + size));
     }
@@ -746,9 +764,6 @@ private:
 
     bool enabled(unsigned i) const { return bool((setie_.at(i/32) >> (i % 32)) & 1); }
     bool pending(unsigned i) const { return bool((setip_.at(i/32) >> (i % 32)) & 1); }
-
-    std::shared_ptr<Domain> root() const;
-    std::shared_ptr<Domain> parent() const { return parent_.lock(); }
 
     const Aplic * aplic_;
     std::string name_;
