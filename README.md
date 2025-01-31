@@ -152,8 +152,11 @@ For each CSR in an APLIC domain, the `Domain` class has a method for reading
 and a method for writing that CSR. For example, the `domaincfg` CSR has
 `readDomaincfg` and `writeDomaincfg`.
 
-Some CSRs are numbered, such as `sourcecfg[i]`. For these CSRs, the first
-parameter to the read and write methods is an index.
+For CSRs which are numbered, such as `sourcecfg[i]`, the first parameter to the
+read and write methods is an index.
+
+For CSRs within an interrupt delivery control (IDC) structure, such as
+`idelivery`, the first parameter to the read and write methods is a hart index.
 
 The read methods all have a return type of `uint32_t`, and the write methods
 all have a parameter of type `uint32_t` for the write data. However, some CSRs
