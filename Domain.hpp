@@ -192,7 +192,6 @@ class Domain
     friend Aplic;
 
 public:
-    Domain(const std::shared_ptr<const Aplic>& aplic, std::string_view name, std::shared_ptr<Domain> parent, uint64_t base, uint64_t size, Privilege privilege, std::span<const unsigned> hart_indices);
 
     bool overlaps(uint64_t base, uint64_t size) const {
         return (base < (base_ + size_)) and (base_ < (base + size));
@@ -480,6 +479,7 @@ public:
     void writeClaimi(unsigned /*hart_index*/, uint32_t /*value*/) {}
 
 private:
+    Domain(const std::shared_ptr<const Aplic>& aplic, std::string_view name, std::shared_ptr<Domain> parent, uint64_t base, uint64_t size, Privilege privilege, std::span<const unsigned> hart_indices);
 
     uint32_t read(uint64_t addr)
     {
