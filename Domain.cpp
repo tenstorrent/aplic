@@ -41,6 +41,8 @@ void Domain::reset()
 
 void Domain::updateTopi()
 {
+    if (domaincfg_.fields.dm == MSI)
+        return;
     unsigned num_sources = aplic_->numSources();
     for (auto hart_index : hart_indices_) {
         idcs_[hart_index].topi = Topi{};

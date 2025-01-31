@@ -2,10 +2,6 @@
 
 - Add API documentation
 - Big endian support and `setipnum_le`, `setipnum_be` CSRs
-- Allow harts to be in multiple domains at the same privilege level when in MSI
-  delivery mode? Maybe emit a warning or error in such cases if direct delivery
-  mode is supported.
-- Should `reset()` leave the source states unchanged?
 - Require that `size` of domain's control region be large enough to hold an IDC
   for each potential hart index number.
 - Add parameters for `IPRIOLEN`, `GEILEN`, and number of implemented bits for
@@ -40,3 +36,11 @@
     optionally all read as zeros.
   - For the root domain, L is initialized at system reset to either zero or
     one.
+
+## Questions:
+
+- Should CSRs in the IDC be writable only in direct delivery mode?
+- Allow harts to be in multiple domains at the same privilege level when in MSI
+  delivery mode? Maybe emit a warning or error in such cases if direct delivery
+  mode is supported.
+- Should `reset()` leave the source states unchanged?
