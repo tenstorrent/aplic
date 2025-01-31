@@ -3,8 +3,8 @@
 
 using namespace TT_APLIC;
 
-Domain::Domain(const std::shared_ptr<const Aplic>& aplic, std::string_view name, std::shared_ptr<Domain> parent, uint64_t base, uint64_t size, bool is_machine, std::span<const unsigned> hart_indices)
-    : aplic_(aplic), name_(name), parent_(parent), base_(base), size_(size), is_machine_(is_machine), hart_indices_(hart_indices.begin(), hart_indices.end())
+Domain::Domain(const std::shared_ptr<const Aplic>& aplic, std::string_view name, std::shared_ptr<Domain> parent, uint64_t base, uint64_t size, Privilege privilege, std::span<const unsigned> hart_indices)
+    : aplic_(aplic), name_(name), parent_(parent), base_(base), size_(size), privilege_(privilege), hart_indices_(hart_indices.begin(), hart_indices.end())
 {
     unsigned num_harts = aplic->numHarts();
     xeip_bits_.resize(num_harts);
@@ -91,7 +91,7 @@ void Domain::runCallbacksAsRequired()
         for (unsigned hart_index : hart_indices_) {
             auto xeip_bit = xeip_bits_[hart_index];
             if (prev_xeip_bits[hart_index] != xeip_bit and direct_callback_)
-                direct_callback_(hart_index, is_machine_, xeip_bit);
+                direct_callback_(hart_index, privilege_, xeip_bit);
         }
     } else if (aplic()->autoForwardViaMsi) {
         unsigned num_sources = aplic()->numSources();
@@ -111,7 +111,7 @@ uint64_t Domain::msiAddr(unsigned hart_index, unsigned guest_index) const
     uint64_t g = (hart_index >> cfgh.lhxw) & ((1 << cfgh.hhxw) - 1);
     uint64_t h = hart_index & ((1 << cfgh.lhxw) - 1);
     uint64_t hhxs = cfgh.hhxs;
-    if (is_machine_) {
+    if (privilege_ == Machine) {
         uint64_t low = root()->mmsiaddrcfg_;
         addr = (uint64_t(cfgh.ppn) << 32) | low;
         addr = (addr | (g << (hhxs + 12)) | (h << cfgh.lhxs)) << 12;

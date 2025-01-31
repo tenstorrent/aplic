@@ -7,7 +7,7 @@ std::shared_ptr<Domain> Aplic::createDomain(
     std::shared_ptr<Domain> parent,
     uint64_t base,
     uint64_t size,
-    bool is_machine,
+    Privilege privilege,
     std::span<const unsigned> hart_indices
 ) {
     if (base % 0x1000 != 0)
@@ -27,10 +27,10 @@ std::shared_ptr<Domain> Aplic::createDomain(
     if (not root_ and parent)
         throw std::runtime_error("first domain created must be root\n");
 
-    if (not parent and not is_machine)
+    if (not parent and privilege != Machine)
         throw std::runtime_error("root domain must be machine-level\n");
 
-    if (not is_machine and not parent->is_machine_)
+    if (privilege == Supervisor and parent->privilege_ == Supervisor)
         throw std::runtime_error("parent of supervisor-level domain must be machine-level\n");
 
     if (root_ and not parent)
@@ -40,13 +40,13 @@ std::shared_ptr<Domain> Aplic::createDomain(
         throw std::runtime_error("domain '" + name + "' must have at least one hart\n");
 
     for (auto domain : domains_) {
-        if (domain->is_machine_ != is_machine)
+        if (domain->privilege_ != privilege)
             continue;
         for (unsigned i : hart_indices) {
             auto it = std::find(domain->hart_indices_.begin(), domain->hart_indices_.end(), i);
             if (it != domain->hart_indices_.end()) {
-                std::string privilege = is_machine ? "machine" : "supervisor";
-                std::string msg = "hart " + std::to_string(i) + " belongs to multiple " + privilege + "-level domains: '" + name + "' and '" + domain->name_ + "'\n";
+                std::string priv_str = privilege == Machine ? "machine" : "supervisor";
+                std::string msg = "hart " + std::to_string(i) + " belongs to multiple " + priv_str + "-level domains: '" + name + "' and '" + domain->name_ + "'\n";
                 throw std::runtime_error(msg);
             }
         }
@@ -57,7 +57,7 @@ std::shared_ptr<Domain> Aplic::createDomain(
             throw std::runtime_error(msg);
         }
     }
-    if (not is_machine) {
+    if (privilege == Supervisor) {
         for (unsigned i : hart_indices) {
             auto it = std::find(parent->hart_indices_.begin(), parent->hart_indices_.end(), i);
             if (it == parent->hart_indices_.end()) {
@@ -67,7 +67,7 @@ std::shared_ptr<Domain> Aplic::createDomain(
         }
     }
 
-    auto domain = std::make_shared<Domain>(shared_from_this(), name, parent, base, size, is_machine, hart_indices);
+    auto domain = std::make_shared<Domain>(shared_from_this(), name, parent, base, size, privilege, hart_indices);
     if (parent)
         parent->children_.push_back(domain);
     if (!root_)

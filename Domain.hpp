@@ -9,7 +9,12 @@
 
 namespace TT_APLIC {
 
-typedef std::function<bool(unsigned hart_index, bool is_machine, bool xeip)> DirectDeliveryCallback;
+enum Privilege {
+    Machine,
+    Supervisor,
+};
+
+typedef std::function<bool(unsigned hart_index, Privilege privilege, bool xeip)> DirectDeliveryCallback;
 typedef std::function<bool(uint64_t addr, uint32_t data)> MsiDeliveryCallback;
 
 enum SourceMode {
@@ -64,7 +69,7 @@ union Smsiaddrcfgh {
 union Target {
     uint32_t value = 0;
 
-    void legalize(bool is_machine, DeliveryMode dm, std::span<const unsigned> hart_indices) {
+    void legalize(Privilege privilege, DeliveryMode dm, std::span<const unsigned> hart_indices) {
         assert(hart_indices.size() > 0);
         if (std::find(hart_indices.begin(), hart_indices.end(), hart_index) == hart_indices.end())
             hart_index = hart_indices[0];
@@ -76,7 +81,7 @@ union Target {
         } else {
             // TODO: add GEILEN parameter? add parameter for width of EIID?
             value &= 0b1111'1111'1111'1111'1111'0111'1111'1111;
-            if (is_machine)
+            if (privilege == Machine)
               guest_index = 0;
         }
     }
@@ -187,7 +192,7 @@ class Domain
     friend Aplic;
 
 public:
-    Domain(const std::shared_ptr<const Aplic>& aplic, std::string_view name, std::shared_ptr<Domain> parent, uint64_t base, uint64_t size, bool is_machine, std::span<const unsigned> hart_indices);
+    Domain(const std::shared_ptr<const Aplic>& aplic, std::string_view name, std::shared_ptr<Domain> parent, uint64_t base, uint64_t size, Privilege privilege, std::span<const unsigned> hart_indices);
 
     bool overlaps(uint64_t base, uint64_t size) const {
         return (base < (base_ + size_)) and (base_ < (base + size));
@@ -246,7 +251,7 @@ public:
     }
 
     uint32_t readMmsiaddrcfg() const {
-        if (not is_machine_)
+        if (privilege_ != Machine)
             return 0;
         if (parent())
             return root()->mmsiaddrcfg_;
@@ -262,7 +267,7 @@ public:
     }
 
     uint32_t readMmsiaddrcfgh() const {
-        if (not is_machine_)
+        if (privilege_ != Machine)
             return 0;
         if (parent()) {
             auto mmsiaddrcfgh = root()->mmsiaddrcfgh_;
@@ -282,7 +287,7 @@ public:
     }
 
     uint32_t readSmsiaddrcfg() const {
-        if (not is_machine_)
+        if (privilege_ != Machine)
             return 0;
         if (parent())
             return root()->smsiaddrcfg_;
@@ -298,7 +303,7 @@ public:
     }
 
     uint32_t readSmsiaddrcfgh() const {
-        if (not is_machine_)
+        if (privilege_ != Machine)
             return 0;
         if (parent())
             return root()->smsiaddrcfgh_.value;
@@ -428,7 +433,7 @@ public:
         if (not sourceIsActive(i))
             return;
         Target target{value};
-        target.legalize(is_machine_, DeliveryMode(domaincfg_.dm), hart_indices_);
+        target.legalize(privilege_, DeliveryMode(domaincfg_.dm), hart_indices_);
         target_[i] = target;
         updateTopi();
         runCallbacksAsRequired();
@@ -751,7 +756,7 @@ private:
     std::weak_ptr<Domain> parent_;
     uint64_t base_;
     uint64_t size_;
-    bool is_machine_;
+    Privilege privilege_;
     std::vector<unsigned> hart_indices_;
     std::vector<std::shared_ptr<Domain>> children_;
     DirectDeliveryCallback direct_callback_ = nullptr;

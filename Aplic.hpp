@@ -30,7 +30,7 @@ public:
         std::shared_ptr<Domain> parent,
         uint64_t base,
         uint64_t size,
-        bool is_machine,
+        Privilege privilege,
         std::span<const unsigned> hart_indices
     );
 

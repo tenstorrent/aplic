@@ -5,7 +5,7 @@ using namespace TT_APLIC;
 
 struct InterruptRecord {
   unsigned hartIx;
-  bool mPrivilege;
+  Privilege privilege;
   bool state;
 };
 
@@ -13,12 +13,12 @@ std::unordered_map<unsigned, bool> interruptStateMap;
 
 std::vector<InterruptRecord> interrupts;
 
-bool directCallback(unsigned hartIx, bool mPrivilege, bool state)
+bool directCallback(unsigned hartIx, Privilege privilege, bool state)
 {
   std::cerr << "Delivering interrupt hart=" << hartIx << " privilege="
-            << (mPrivilege? "machine" : "supervisor")
+            << (privilege == Machine? "machine" : "supervisor")
             << " interrupt-state=" << (state? "on" : "off") << '\n';
-  interrupts.push_back({hartIx, mPrivilege, state});
+  interrupts.push_back({hartIx, privilege, state});
   interruptStateMap[hartIx] = state;
   return true;
 }
@@ -38,9 +38,8 @@ test_01_domaincfg()
 
   uint64_t addr = 0x1000000;
   uint64_t domainSize = 32*1024;
-  bool isMachine = true;
   unsigned hartIndices[] = {0};
-  auto root = aplic->createDomain("root", nullptr, addr, domainSize, isMachine, hartIndices);
+  auto root = aplic->createDomain("root", nullptr, addr, domainSize, Machine, hartIndices);
 
   root->writeDomaincfg(0xfffffffe);
   uint32_t domaincfg = root->readDomaincfg();
@@ -60,11 +59,9 @@ test_02_sourcecfg()
 
   uint64_t addr = 0x1000000;
   uint64_t domainSize = 32*1024;
-  bool isMachine = true;
   unsigned hartIndices[] = {0};
-  auto root = aplic->createDomain("root", nullptr, addr, domainSize, isMachine, hartIndices);
-  isMachine = false;
-  auto child = aplic->createDomain("child", root, addr+domainSize, domainSize, isMachine, hartIndices);
+  auto root = aplic->createDomain("root", nullptr, addr, domainSize, Machine, hartIndices);
+  auto child = aplic->createDomain("child", root, addr+domainSize, domainSize, Supervisor, hartIndices);
 
   // For a system with N interrupt sources, write a non-zero value to a sourcecfg[i] where i > N; expect to read 0.
   root->writeSourcecfg(2, 0x1);
@@ -100,9 +97,8 @@ test_03_idelivery()
 
   uint64_t addr = 0x1000000;
   uint64_t domainSize = 32 * 1024;
-  bool isMachine = true;
   unsigned hartIndices[] = {0};
-  auto root = aplic->createDomain("root", nullptr, addr, domainSize, isMachine, hartIndices);
+  auto root = aplic->createDomain("root", nullptr, addr, domainSize, Machine, hartIndices);
   aplic->setDirectCallback(directCallback);
 
   Domaincfg dcfg{};
@@ -149,9 +145,8 @@ test_04_iforce()
 
   uint64_t addr = 0x1000000;
   uint64_t domainSize = 32 * 1024;
-  bool isMachine = true;
   unsigned hartIndices[] = {0};
-  auto root = aplic->createDomain("root", nullptr, addr, domainSize, isMachine, hartIndices);
+  auto root = aplic->createDomain("root", nullptr, addr, domainSize, Machine, hartIndices);
   aplic->setDirectCallback(directCallback);
 
   Domaincfg dcfg{};
@@ -210,9 +205,8 @@ test_05_ithreshold()
 
   uint64_t addr = 0x1000000;
   uint64_t domainSize = 32 * 1024;
-  bool isMachine = true;
   unsigned hartIndices[] = {0};
-  auto root = aplic->createDomain("root", nullptr, addr, domainSize, isMachine, hartIndices);
+  auto root = aplic->createDomain("root", nullptr, addr, domainSize, Machine, hartIndices);
   aplic->setDirectCallback(directCallback);
 
   Domaincfg dcfg{};
@@ -322,9 +316,8 @@ test_06_topi()
 
   uint64_t addr = 0x1000000;
   uint64_t domainSize = 32 * 1024;
-  bool isMachine = true;
   unsigned hartIndices[] = {0};
-  auto root = aplic->createDomain("root", nullptr, addr, domainSize, isMachine, hartIndices);
+  auto root = aplic->createDomain("root", nullptr, addr, domainSize, Machine, hartIndices);
 
   Domaincfg dcfg{};
   dcfg.dm = 0; 
@@ -401,9 +394,8 @@ test_07_claimi()
 
   uint64_t addr = 0x1000000;
   uint64_t domainSize = 32 * 1024;
-  bool isMachine = true;
   unsigned hartIndices[] = {0};
-  auto root = aplic->createDomain("root", nullptr, addr, domainSize, isMachine, hartIndices);
+  auto root = aplic->createDomain("root", nullptr, addr, domainSize, Machine, hartIndices);
   aplic->setDirectCallback(directCallback);
 
   Domaincfg dcfg{};
@@ -467,9 +459,8 @@ test_08_setipnum_le()
 
   uint64_t addr = 0x1000000;
   uint64_t domainSize = 32 * 1024;
-  bool isMachine = true;
   unsigned hartIndices[] = {0};
-  auto root = aplic->createDomain("root", nullptr, addr, domainSize, isMachine, hartIndices);
+  auto root = aplic->createDomain("root", nullptr, addr, domainSize, Machine, hartIndices);
   aplic->setDirectCallback(directCallback);
 
 
@@ -524,9 +515,8 @@ test_09_setipnum_be()
 
   uint64_t addr = 0x1000000;
   uint64_t domainSize = 32 * 1024;
-  bool isMachine = true;
   unsigned hartIndices[] = {0};
-  auto root = aplic->createDomain("root", nullptr, addr, domainSize, isMachine, hartIndices);
+  auto root = aplic->createDomain("root", nullptr, addr, domainSize, Machine, hartIndices);
 
 
   Domaincfg dcfg{};
@@ -579,9 +569,8 @@ test_10_targets()
 
   uint64_t addr = 0x1000000;
   uint64_t domainSize = 32 * 1024;
-  bool isMachine = true;
   unsigned hartIndices[] = {0, 1, 2, 3};
-  auto root = aplic->createDomain("root", nullptr, addr, domainSize, isMachine, hartIndices);
+  auto root = aplic->createDomain("root", nullptr, addr, domainSize, Machine, hartIndices);
 
   // MSI delivery mode
   Domaincfg dcfg{};
@@ -657,11 +646,9 @@ test_11_MmsiAddressConfig()
   aplic->setMsiCallback(imsicCallback);
 
   // Create root and child domains
-  bool isMachine = true;
   unsigned hartIndices[] = {0, 1};
-  auto root = aplic->createDomain("root", nullptr, addr, domainSize, isMachine, hartIndices);
-  isMachine = false;
-  auto child = aplic->createDomain("child", root, addr + domainSize, domainSize, isMachine, hartIndices);
+  auto root = aplic->createDomain("root", nullptr, addr, domainSize, Machine, hartIndices);
+  auto child = aplic->createDomain("child", root, addr + domainSize, domainSize, Supervisor, hartIndices);
 
   // Enable MSI delivery mode in root
   Domaincfg dcfg{};
@@ -761,11 +748,9 @@ test_12_SmsiAddressConfig()
 
   uint64_t addr = 0x1000000;
   uint64_t domainSize = 32 * 1024;
-  bool isMachine = true;
   unsigned hartIndices[] = {0, 1};
-  auto root = aplic->createDomain("root", nullptr, addr, domainSize, isMachine, hartIndices);
-  isMachine = false;
-  auto child = aplic->createDomain("child", root, addr + domainSize, domainSize, isMachine, hartIndices);
+  auto root = aplic->createDomain("root", nullptr, addr, domainSize, Machine, hartIndices);
+  auto child = aplic->createDomain("child", root, addr + domainSize, domainSize, Supervisor, hartIndices);
 
   uint32_t base_ppn = 0x234;  // 12-bit PPN
   uint32_t lhxs = 0b101;      // 3-bit field
