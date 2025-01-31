@@ -75,8 +75,8 @@ test_02_sourcecfg()
 
   // Delegate a source i to a domain and write one of the supported source modes; expect to read that value.
   Sourcecfg root_sourcecfg1{0};
-  root_sourcecfg1.d = true;
-  root_sourcecfg1.child_index = true;
+  root_sourcecfg1.d1.d = true;
+  root_sourcecfg1.d1.child_index = true;
   root->writeSourcecfg(1, root_sourcecfg1.value);
   child->writeSourcecfg(1, 0x1);
   csr_value = child->readSourcecfg(1);
@@ -102,13 +102,13 @@ test_03_idelivery()
   aplic.setDirectCallback(directCallback);
 
   Domaincfg dcfg{};
-  dcfg.dm = 0;
-  dcfg.ie = 1; 
+  dcfg.fields.dm = 0;
+  dcfg.fields.ie = 1; 
   root->writeDomaincfg(dcfg.value);
   std::cerr << "Configured domaincfg for direct delivery mode (DM=0, IE=1).\n";
 
   Sourcecfg sourcecfg{};
-  sourcecfg.sm = Edge1;
+  sourcecfg.d0.sm = Edge1;
   root->writeSourcecfg(1, sourcecfg.value);
 
   root->writeIdelivery(0, 1);
@@ -150,13 +150,13 @@ test_04_iforce()
   aplic.setDirectCallback(directCallback);
 
   Domaincfg dcfg{};
-  dcfg.dm = 0; 
-  dcfg.ie = 1; 
+  dcfg.fields.dm = 0; 
+  dcfg.fields.ie = 1; 
   root->writeDomaincfg(dcfg.value);
   std::cerr << "Configured domaincfg for direct delivery mode (DM=0, IE=1).\n";
 
   Sourcecfg sourcecfg{};
-  sourcecfg.sm = Edge1;
+  sourcecfg.d0.sm = Edge1;
   root->writeSourcecfg(1, sourcecfg.value);
 
   root->writeIdelivery(0, 1);
@@ -189,7 +189,7 @@ test_04_iforce()
   std::cerr << "Iforce cleared to 0 after reading claimi.\n";
 
   // Write 0x1 to iforce for a nonexistent hart
-  // root->writeIforce(hartCount, 1); // TODO: this would cause an assertion; use aplic->write() instead
+  // root->writeIforce(hartCount, 1); // TODO: this would cause an assertion; use aplic.write() instead
   std::cerr << "Wrote 0x1 to iforce for nonexistent hart.\n";
 
   //assert(interrupts.size() == 6 && !interruptStateMap[0]); // No additional interrupts should be added // TODO
@@ -210,13 +210,13 @@ test_05_ithreshold()
   aplic.setDirectCallback(directCallback);
 
   Domaincfg dcfg{};
-  dcfg.dm = 0; 
-  dcfg.ie = 1; 
+  dcfg.fields.dm = 0; 
+  dcfg.fields.ie = 1; 
   root->writeDomaincfg(dcfg.value);
   std::cerr << "Configured domaincfg for direct delivery mode (DM=0, IE=1).\n";
 
   Sourcecfg sourcecfg{};
-  sourcecfg.sm = unsigned(SourceMode::Edge1);
+  sourcecfg.d0.sm = unsigned(SourceMode::Edge1);
   root->writeSourcecfg(1, sourcecfg.value);
   root->writeSourcecfg(2, sourcecfg.value);
   root->writeSourcecfg(3, sourcecfg.value);
@@ -226,12 +226,12 @@ test_05_ithreshold()
   std::cerr << "Enabled interrupt delivery for the hart.\n";
 
   Target tgt{};
-  tgt.hart_index = 0; 
-  tgt.iprio = 0; 
+  tgt.dm0.hart_index = 0; 
+  tgt.dm0.iprio = 0; 
   root->writeTarget(1, tgt.value);
-  tgt.iprio = 5;
+  tgt.dm0.iprio = 5;
   root->writeTarget(2, tgt.value);
-  tgt.iprio = 7; 
+  tgt.dm0.iprio = 7; 
   root->writeTarget(3, tgt.value);
   std::cerr << "Set priorities for interrupts: 1=0, 2=5, 3=7.\n";
 
@@ -269,11 +269,11 @@ test_05_ithreshold()
   std::cerr << "Set pending and enable bits for interrupts 1, 2, and 3.\n";
 
   interrupts.clear();
-  aplic->setSourceState(1, true); 
+  aplic.setSourceState(1, true); 
   assert(interruptStateMap[0]);
-  aplic->setSourceState(2, true); 
+  aplic.setSourceState(2, true); 
   //assert(!interruptStateMap[0]); // TODO
-  aplic->setSourceState(3, true); 
+  aplic.setSourceState(3, true); 
   //assert(interrupts.size() == 2 && !interruptStateMap[0]); // TODO
   
   std::cerr << "Verified only interrupts with priority <= 5 are delivered when ithreshold = 0x5.\n";
@@ -284,16 +284,16 @@ test_05_ithreshold()
   std::cerr << "Set ithreshold to max_priority (0x" << std::hex << max_priority << ").\n";
 
   interrupts.clear();
-  aplic->setSourceState(1, true);
+  aplic.setSourceState(1, true);
   //assert(!interruptStateMap[0]); // TODO
-  aplic->setSourceState(2, true);
+  aplic.setSourceState(2, true);
   //assert(!interruptStateMap[0]); // TODO
-  aplic->setSourceState(3, true);
+  aplic.setSourceState(3, true);
   //assert(interrupts.empty() && !interruptStateMap[0]); // TODO
   std::cerr << "Verified no interrupts are delivered when ithreshold = max_priority.\n";
 
   // Set domaincfg.IE = 0 and verify no interrupts are delivered
-  dcfg.ie = 0; 
+  dcfg.fields.ie = 0; 
   root->writeDomaincfg(dcfg.value);
   std::cerr << "Set domaincfg.IE = 0.\n";
 
@@ -320,8 +320,8 @@ test_06_topi()
   auto root = aplic.createDomain("root", nullptr, addr, domainSize, Machine, hartIndices);
 
   Domaincfg dcfg{};
-  dcfg.dm = 0; 
-  dcfg.ie = 1; 
+  dcfg.fields.dm = 0; 
+  dcfg.fields.ie = 1; 
   root->writeDomaincfg(dcfg.value);
   std::cerr << "Configured domaincfg for direct delivery mode (DM=0, IE=1).\n";
 
@@ -329,7 +329,7 @@ test_06_topi()
   std::cerr << "Enabled interrupt delivery for the hart.\n";
 
   Sourcecfg sourcecfg{};
-  sourcecfg.sm = unsigned(SourceMode::Edge1); 
+  sourcecfg.d0.sm = unsigned(SourceMode::Edge1); 
   root->writeSourcecfg(3, sourcecfg.value);
   root->writeSourcecfg(5, sourcecfg.value);
   root->writeSourcecfg(7, sourcecfg.value);
@@ -352,12 +352,12 @@ test_06_topi()
   uint32_t setie_value = root->readSetie(0);
 
   Target tgt{};
-  tgt.hart_index = 0; 
-  tgt.iprio = 3; 
+  tgt.dm0.hart_index = 0; 
+  tgt.dm0.iprio = 3; 
   root->writeTarget(3, tgt.value);
-  tgt.iprio = 5; 
+  tgt.dm0.iprio = 5; 
   root->writeTarget(5, tgt.value);
-  tgt.iprio = 7; 
+  tgt.dm0.iprio = 7; 
   root->writeTarget(7, tgt.value);
   std::cerr << "Set priorities for interrupts: 3, 5, 7.\n";
 
@@ -399,13 +399,13 @@ test_07_claimi()
   aplic.setDirectCallback(directCallback);
 
   Domaincfg dcfg{};
-  dcfg.dm = 0;
-  dcfg.ie = 1;
+  dcfg.fields.dm = 0;
+  dcfg.fields.ie = 1;
   root->writeDomaincfg(dcfg.value);
   std::cerr << "Configured domaincfg for direct delivery mode (DM=0, IE=1).\n";
 
   Sourcecfg sourcecfg{};
-  sourcecfg.sm = unsigned(SourceMode::Edge1);
+  sourcecfg.d0.sm = unsigned(SourceMode::Edge1);
   root->writeSourcecfg(1, sourcecfg.value);
   root->writeSourcecfg(2, sourcecfg.value);
   root->writeSourcecfg(3, sourcecfg.value);
@@ -419,10 +419,10 @@ test_07_claimi()
   std::cerr << "Set pending and enable bits for interrupts 1, 2, and 3.\n";
 
   Target tgt{};
-  tgt.hart_index = 0; // Target hart 0
-  tgt.iprio = 1;
+  tgt.dm0.hart_index = 0; // Target hart 0
+  tgt.dm0.iprio = 1;
   root->writeTarget(1, tgt.value);
-  tgt.iprio = 2;
+  tgt.dm0.iprio = 2;
   root->writeTarget(2, tgt.value);
   std::cerr << "Set priorities for interrupts: 1=1, 2=2.\n";
 
@@ -465,13 +465,13 @@ test_08_setipnum_le()
 
 
   Domaincfg dcfg{};
-  dcfg.dm = 0;
-  dcfg.ie = 1; 
+  dcfg.fields.dm = 0;
+  dcfg.fields.ie = 1; 
   root->writeDomaincfg(dcfg.value);
   std::cerr << "Configured domaincfg for direct delivery mode (DM=0, IE=1).\n";
 
   Sourcecfg sourcecfg{};
-  sourcecfg.sm = unsigned(SourceMode::Edge1);
+  sourcecfg.d0.sm = unsigned(SourceMode::Edge1);
   root->writeSourcecfg(1, sourcecfg.value);
 
   root->writeIdelivery(0, 1);
@@ -520,13 +520,13 @@ test_09_setipnum_be()
 
 
   Domaincfg dcfg{};
-  dcfg.dm = 0;
-  dcfg.ie = 1; 
+  dcfg.fields.dm = 0;
+  dcfg.fields.ie = 1; 
   root->writeDomaincfg(dcfg.value);
   std::cerr << "Configured domaincfg for direct delivery mode (DM=0, IE=1).\n";
 
   Sourcecfg sourcecfg{};
-  sourcecfg.sm = unsigned(SourceMode::Edge1);
+  sourcecfg.d0.sm = unsigned(SourceMode::Edge1);
   root->writeSourcecfg(1, sourcecfg.value);
 
   root->writeIdelivery(0, 1);
@@ -574,21 +574,21 @@ test_10_targets()
 
   // MSI delivery mode
   Domaincfg dcfg{};
-  dcfg.dm = 1;  
-  dcfg.ie = 1;  
+  dcfg.fields.dm = 1;  
+  dcfg.fields.ie = 1;  
   root->writeDomaincfg(dcfg.value);
   std::cerr << "Configured domaincfg for MSI delivery mode.\n";
 
   Sourcecfg sourcecfg{};
-  sourcecfg.sm = unsigned(SourceMode::Edge1);
+  sourcecfg.d0.sm = unsigned(SourceMode::Edge1);
   root->writeSourcecfg(1, sourcecfg.value);
 
   // Configure a valid Hart Index, Guest Index, and EIID 
   uint32_t target_value = root->readTarget(1);
   Target tgt{};
-  tgt.hart_index = 2;  
-  tgt.guest_index = 3;  
-  tgt.eiid = 42;  
+  tgt.dm1.hart_index = 2;  
+  tgt.dm1.guest_index = 3;  
+  tgt.dm1.eiid = 42;  
   root->writeTarget(1, tgt.value);
   std::cerr << "Configured target register.\n";
 
@@ -600,9 +600,9 @@ test_10_targets()
   std::cerr << "Verified target configuration for hart, guest, and EIID.\n";
 
   // Write invalid values and verify they are ignored
-  tgt.hart_index = 0xFFFF; 
-  tgt.guest_index = 0xFFFF; 
-  tgt.eiid = 0xFFF + 1; 
+  tgt.dm1.hart_index = 0xFFFF; 
+  tgt.dm1.guest_index = 0xFFFF; 
+  tgt.dm1.eiid = 0xFFF + 1; 
   root->writeTarget(1, tgt.value);
   target_value = root->readTarget(1);
   assert(((target_value >> 17) & 0x3FFF) != 0xFFFF); 
@@ -611,11 +611,11 @@ test_10_targets()
   std::cerr << "Verified invalid values are ignored or adjusted.\n";
 
   // In direct delivery mode, test that an illegal priority (e.g. 0) gets replaced.
-  dcfg.dm = 0;
-  dcfg.ie = 1;
+  dcfg.fields.dm = 0;
+  dcfg.fields.ie = 1;
   root->writeDomaincfg(dcfg.value);
-  tgt.hart_index = 0;
-  tgt.iprio = 0; // illegal priority, expect default (commonly 1)
+  tgt.dm0.hart_index = 0;
+  tgt.dm0.iprio = 0; // illegal priority, expect default (commonly 1)
   root->writeTarget(1, tgt.value);
   target_value = root->readTarget(1);
   // Adjust the expected default as needed; here we assume the implemented value is 1.
@@ -642,18 +642,18 @@ test_11_MmsiAddressConfig()
   uint64_t domainSize = 32 * 1024;
   Aplic aplic(hartCount, interruptCount);
 
-  aplic->setDirectCallback(directCallback);
-  aplic->setMsiCallback(imsicCallback);
+  aplic.setDirectCallback(directCallback);
+  aplic.setMsiCallback(imsicCallback);
 
   // Create root and child domains
   unsigned hartIndices[] = {0, 1};
-  auto root = aplic->createDomain("root", nullptr, addr, domainSize, Machine, hartIndices);
-  auto child = aplic->createDomain("child", root, addr + domainSize, domainSize, Supervisor, hartIndices);
+  auto root = aplic.createDomain("root", nullptr, addr, domainSize, Machine, hartIndices);
+  auto child = aplic.createDomain("child", root, addr + domainSize, domainSize, Supervisor, hartIndices);
 
   // Enable MSI delivery mode in root
   Domaincfg dcfg{};
-  dcfg.dm = 1;  // MSI mode
-  dcfg.ie = 1;  // Enable interrupt
+  dcfg.fields.dm = 1;  // MSI mode
+  dcfg.fields.ie = 1;  // Enable interrupt
   root->writeDomaincfg(dcfg.value);
   std::cerr << "Configured domaincfg for MSI delivery mode.\n";
 
@@ -679,13 +679,13 @@ test_11_MmsiAddressConfig()
 
   // Configure source 1 in root as Level1 (active high)
   Sourcecfg cfg1{};
-  cfg1.sm = Level1;
+  cfg1.d0.sm = Level1;
   root->writeSourcecfg(1, cfg1.value);
 
   // Set target for source 1
   Target tgt{};
-  tgt.hart_index = 0;
-  tgt.iprio = 1;
+  tgt.dm0.hart_index = 0;
+  tgt.dm0.iprio = 1;
   root->writeTarget(1, tgt.value);
 
   // Enable source 1 interrupt
@@ -796,34 +796,33 @@ void test_13_misaligned_and_unsupported_access()
 {
   std::cerr << "\nRunning test_13_misaligned_and_unsupported_access...\n";
   unsigned hartCount = 1, interruptCount = 4;
-  auto aplic = std::make_shared<Aplic>(hartCount, interruptCount);
+  Aplic aplic(hartCount, interruptCount);
   
   uint64_t addr = 0x1000000, domainSize = 32 * 1024;
-  bool isMachine = true;
   unsigned hartIndices[] = {0};
-  auto root = aplic->createDomain("root", nullptr, addr, domainSize, isMachine, hartIndices);
+  auto root = aplic.createDomain("root", nullptr, addr, domainSize, Machine, hartIndices);
   
   // Original misaligned test on domaincfg.
-  aplic->write(addr, 2, 0x1234);
+  aplic.write(addr, 2, 0x1234);
   uint32_t domaincfg_value = 0;
-  aplic->read(addr, 4, domaincfg_value);
+  aplic.read(addr, 4, domaincfg_value);
   assert(domaincfg_value == 0x80000000);
   
   uint64_t invalid_addr = addr + 0x5000;
   uint32_t read_value = 0;
-  aplic->write(invalid_addr, 4, 0xdeadbeef);
-  aplic->read(invalid_addr, 4, read_value);
+  aplic.write(invalid_addr, 4, 0xdeadbeef);
+  aplic.read(invalid_addr, 4, read_value);
   assert(read_value == 0);
   
   // --- Extended misaligned tests ---
   uint64_t sourcecfg_addr = addr + 4;
-  aplic->write(sourcecfg_addr, 2, 0xABCD);
+  aplic.write(sourcecfg_addr, 2, 0xABCD);
   uint32_t read_val = 0;
-  aplic->read(sourcecfg_addr, 4, read_val);
+  aplic.read(sourcecfg_addr, 4, read_val);
   assert(read_val == 0);
   
   uint64_t setie_addr = addr + 0x1e00;
-  aplic->read(setie_addr + 1, 4, read_val);
+  aplic.read(setie_addr + 1, 4, read_val);
   assert(read_val == 0);
   
   std::cerr << "Test test_13_misaligned_and_unsupported_access passed.\n";
@@ -834,22 +833,21 @@ void test_14_set_and_clear_pending()
 {
   unsigned hartCount = 1;
   unsigned interruptCount = 5;
-  auto aplic = std::make_shared<Aplic>(hartCount, interruptCount);
+  Aplic aplic(hartCount, interruptCount);
   
   uint64_t addr = 0x1000000;
   uint64_t domainSize = 32 * 1024;
-  bool isMachine = true;
   unsigned hartIndices[] = {0};
-  auto root = aplic->createDomain("root", nullptr, addr, domainSize, isMachine, hartIndices);
+  auto root = aplic.createDomain("root", nullptr, addr, domainSize, Machine, hartIndices);
   
   Domaincfg dcfg{};
-  dcfg.dm = 0;
-  dcfg.ie = 1;
+  dcfg.fields.dm = 0;
+  dcfg.fields.ie = 1;
   root->writeDomaincfg(dcfg.value);
   
   // Configure source 1 as Edge1.
   Sourcecfg sourcecfg{};
-  sourcecfg.sm = Edge1;
+  sourcecfg.d0.sm = Edge1;
   root->writeSourcecfg(1, sourcecfg.value);
   
   // Set pending bit for source 1 via setip.
@@ -872,18 +870,17 @@ void test_15_genmsi()
 {
   unsigned hartCount = 1;
   unsigned interruptCount = 1;
-  auto aplic = std::make_shared<Aplic>(hartCount, interruptCount);
+  Aplic aplic(hartCount, interruptCount);
   
   uint64_t addr = 0x1000000;
   uint64_t domainSize = 32 * 1024;
-  bool isMachine = true;
   unsigned hartIndices[] = {0};
-  auto root = aplic->createDomain("root", nullptr, addr, domainSize, isMachine, hartIndices);
+  auto root = aplic.createDomain("root", nullptr, addr, domainSize, Machine, hartIndices);
   
   // Configure for MSI mode.
   Domaincfg dcfg{};
-  dcfg.dm = 1;
-  dcfg.ie = 1;
+  dcfg.fields.dm = 1;
+  dcfg.fields.ie = 1;
   root->writeDomaincfg(dcfg.value);
   
   uint32_t genmsi_val = (0 << 18) | 42;
@@ -893,7 +890,7 @@ void test_15_genmsi()
   assert((read_genmsi & 0x7FF) == 42);
   
   // Now change to direct delivery mode; genmsi should be read-only zero.
-  dcfg.dm = 0;
+  dcfg.fields.dm = 0;
   root->writeDomaincfg(dcfg.value);
   root->writeGenmsi(0x12345678);
   read_genmsi = root->readGenmsi();
@@ -901,7 +898,7 @@ void test_15_genmsi()
   
   // If your model supports checking the busy bit, you could try writing again.
   // Here, we simply switch to direct delivery mode and confirm genmsi is read-only zero.
-  dcfg.dm = 0;
+  dcfg.fields.dm = 0;
   root->writeDomaincfg(dcfg.value);
   root->writeGenmsi(0x12345678);
   read_genmsi = root->readGenmsi();
@@ -918,18 +915,16 @@ test_16_sourcecfg_pending()
   
   // Use one hart and several interrupt sources.
   unsigned hartCount = 1, interruptCount = 10;
-  bool autoDeliver = true;
-  auto aplic = std::make_shared<Aplic>(hartCount, interruptCount);
-  aplic->setDirectCallback(directCallback);
+  Aplic aplic(hartCount, interruptCount);
+  aplic.setDirectCallback(directCallback);
   
   uint64_t addr = 0x1000000, domainSize = 32 * 1024;
-  bool isMachine = true;
   unsigned hartIndices[] = {0};
-  auto root = aplic->createDomain("root", nullptr, addr, domainSize, isMachine, hartIndices);
+  auto root = aplic.createDomain("root", nullptr, addr, domainSize, Machine, hartIndices);
   
   Domaincfg dcfg{};
-  dcfg.dm = 0;  
-  dcfg.ie = 1;
+  dcfg.fields.dm = 0;  
+  dcfg.fields.ie = 1;
   root->writeDomaincfg(dcfg.value);
   
   uint64_t setip_value = 0;
@@ -937,15 +932,15 @@ test_16_sourcecfg_pending()
   // Variation 1: Change source 1 from Inactive to Level1 with an edge.
   int source = 1;
   root->writeSourcecfg(1, 0); // Inactive.
-  aplic->setSourceState(source, false);
+  aplic.setSourceState(source, false);
   setip_value = root->readSetip(0);
   assert(!(setip_value & (1 << source)));
   
   Sourcecfg cfg{};
-  cfg.sm = 6;  // Level1.
+  cfg.d0.sm = 6;  // Level1.
   root->writeSourcecfg(1, cfg.value);
-  aplic->setSourceState(source, false);
-  aplic->setSourceState(source, true);
+  aplic.setSourceState(source, false);
+  aplic.setSourceState(source, true);
   setip_value = root->readSetip(0);
   assert(setip_value & (1 << source));
   std::cerr << "Variation 1 passed: source 1 becomes pending when changed to Level1 with rising edge.\n";
@@ -953,17 +948,17 @@ test_16_sourcecfg_pending()
   // Variation 2: Change source 2 from Detached to Level1.
   source = 2;
   Sourcecfg cfg_detached{};
-  cfg_detached.sm = 1; // Detached.
+  cfg_detached.d0.sm = 1; // Detached.
   root->writeSourcecfg(2, cfg_detached.value);
-  aplic->setSourceState(source, false);
+  aplic.setSourceState(source, false);
   setip_value = root->readSetip(0);
   assert(!(setip_value & (1 << source)));
   
   Sourcecfg cfg2{};
-  cfg2.sm = 6;
+  cfg2.d0.sm = 6;
   root->writeSourcecfg(2, cfg2.value);
-  aplic->setSourceState(source, false);
-  aplic->setSourceState(source, true);
+  aplic.setSourceState(source, false);
+  aplic.setSourceState(source, true);
   setip_value = root->readSetip(0);
   assert(setip_value & (1 << source));
   std::cerr << "Variation 2 passed: source 2 becomes pending when changed to Level1 with rising edge.\n";
@@ -971,13 +966,13 @@ test_16_sourcecfg_pending()
   // Variation 3: With domaincfg.IE disabled, no interrupt is delivered.
   source = 3;
   Sourcecfg cfg3{};
-  cfg3.sm = 6;
+  cfg3.d0.sm = 6;
   root->writeSourcecfg(3, cfg3.value);
-  aplic->setSourceState(source, false);
+  aplic.setSourceState(source, false);
   interrupts.clear();
-  dcfg.ie = 0;
+  dcfg.fields.ie = 0;
   root->writeDomaincfg(dcfg.value);
-  aplic->setSourceState(source, true);
+  aplic.setSourceState(source, true);
   assert(interrupts.empty());
   std::cerr << "Variation 3 passed: With IE disabled, no interrupt is delivered for source 3.\n";
   
@@ -990,8 +985,8 @@ test_16_sourcecfg_pending()
   
   // Test delegation removal: first set delegation, then remove it.
   Sourcecfg delegateCfg {0};
-  delegateCfg.d = true;
-  delegateCfg.child_index = true;
+  delegateCfg.d1.d = true;
+  delegateCfg.d1.child_index = true;
   root->writeSourcecfg(1, delegateCfg.value);
   root->writeSourcecfg(1, 0);
   read_val = root->readSourcecfg(1);
@@ -1005,22 +1000,20 @@ test_16_sourcecfg_pending()
 void test_17_pending_extended()
 {
   unsigned hartCount = 1, interruptCount = 5;
-  bool autoDeliver = true;
-  Aplic aplic(hartCount, interruptCount, autoDeliver);
+  Aplic aplic(hartCount, interruptCount);
   
   uint64_t addr = 0x1000000, domainSize = 32 * 1024;
-  bool isMachine = true;
-  auto root = aplic.createDomain("root", nullptr, addr, domainSize, isMachine);
+  auto root = aplic.createDomain("root", nullptr, addr, domainSize, Machine);
   
   Domaincfg dcfg {0};
-  dcfg.dm = 0;
-  dcfg.ie = 1;
+  dcfg.fields.dm = 0;
+  dcfg.fields.ie = 1;
   root->write(root->csrAddress(CsrNumber::Domaincfg), sizeof(CsrValue), dcfg.value);
   
   // Configure source 1 as Level1.
   uint64_t sourcecfg1_addr = root->csrAddress(CsrNumber::Sourcecfg1);
   Sourcecfg cfg_level1{};
-  cfg_level1.sm = 6;  // Level1 active-high.
+  cfg_level1.d0.sm = 6;  // Level1 active-high.
   aplic.write(sourcecfg1_addr, 4, cfg_level1.value);
   
   // For level-sensitive sources, the pending bit should mirror the external input.
@@ -1028,12 +1021,12 @@ void test_17_pending_extended()
   uint64_t setip_value = 0;
   
   // Set external input high and verify pending bit is set.
-  aplic->setSourceState(1, true);
+  aplic.setSourceState(1, true);
   aplic.read(setip_addr, 4, setip_value);
   assert(setip_value & (1 << 1));
   
   // Now, set external input low and verify pending bit clears.
-  aplic->setSourceState(1, false);
+  aplic.setSourceState(1, false);
   aplic.read(setip_addr, 4, setip_value);
   // For level-sensitive sources in direct delivery mode, the pending bit should follow the input.
   assert(!(setip_value & (1 << 1)));
@@ -1041,12 +1034,12 @@ void test_17_pending_extended()
   // For an edge-sensitive source, in contrast, if no transition occurs, the pending bit remains unchanged.
   uint64_t sourcecfg2_addr = root->csrAddress(Domain::advance(CsrNumber::Sourcecfg1, 1));
   Sourcecfg cfg_edge1{};
-  cfg_edge1.sm = unsigned(SourceMode::Edge1);
+  cfg_edge1.d0.sm = unsigned(SourceMode::Edge1);
   aplic.write(sourcecfg2_addr, 4, cfg_edge1.value);
   // Ensure input is low.
-  aplic->setSourceState(2, false);
+  aplic.setSourceState(2, false);
   aplic.write(root->csrAddress(CsrNumber::Setip0), 4, 0);  // clear pending
-  aplic->setSourceState(2, false);
+  aplic.setSourceState(2, false);
   aplic.read(setip_addr, 4, setip_value);
   // No transition: pending should not be set.
   assert(!(setip_value & (1 << 2)));

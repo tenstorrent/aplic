@@ -48,7 +48,7 @@ union Mmsiaddrcfgh {
         unsigned hhxs : 5;
         unsigned res2 : 2;
         unsigned l    : 1;
-    };
+    } fields;
 };
 
 union Smsiaddrcfgh {
@@ -63,7 +63,7 @@ union Smsiaddrcfgh {
         unsigned res0 : 8;
         unsigned lhxs : 3;
         unsigned res1 : 9;
-    };
+    } fields;
 };
 
 union Target {
@@ -71,18 +71,18 @@ union Target {
 
     void legalize(Privilege privilege, DeliveryMode dm, std::span<const unsigned> hart_indices) {
         assert(hart_indices.size() > 0);
-        if (std::find(hart_indices.begin(), hart_indices.end(), hart_index) == hart_indices.end())
-            hart_index = hart_indices[0];
+        if (std::find(hart_indices.begin(), hart_indices.end(), dm0.hart_index) == hart_indices.end())
+            dm0.hart_index = hart_indices[0];
         if (dm == Direct) {
             // TODO: only set bits IPRIOLEN-1:0 for iprio
             value &= 0b1111'1111'1111'1100'0000'0000'1111'1111;
-            if (iprio == 0)
-                iprio = 1;
+            if (dm0.iprio == 0)
+                dm0.iprio = 1;
         } else {
             // TODO: add GEILEN parameter? add parameter for width of EIID?
             value &= 0b1111'1111'1111'1111'1111'0111'1111'1111;
             if (privilege == Machine)
-              guest_index = 0;
+              dm1.guest_index = 0;
         }
     }
 
@@ -91,15 +91,15 @@ union Target {
         unsigned iprio      : 8;
         unsigned res0       : 10;
         unsigned hart_index : 14;
-    };
+    } dm0;
 
     // fields for MSI delivery mode
     struct {
         unsigned eiid         : 11;
         unsigned res1         : 1;
         unsigned guest_index  : 6;
-        // hart_index is common to both delivery modes
-    };
+        unsigned hart_index   : 14;
+    } dm1;
 };
 
 union Topi {
@@ -113,7 +113,7 @@ union Topi {
         unsigned priority : 8;
         unsigned res0     : 8;
         unsigned iid      : 10;
-    };
+    } fields;
 };
 
 struct Idc {
@@ -140,33 +140,40 @@ union Domaincfg {
         unsigned ie   : 1;
         unsigned res2 : 15;
         unsigned top8 : 8;
-    };
+    } fields;
 };
 
 union Sourcecfg {
     uint32_t value = 0;
 
     void legalize(unsigned num_children) {
-        value &= d ? 0b0111'1111'1111 : 0b0100'0000'0111;
-        if (d and num_children == 0)
+        value &= dx.d ? 0b0111'1111'1111 : 0b0100'0000'0111;
+        if (dx.d and num_children == 0)
             value = 0;
-        else if (d and child_index >= num_children)
-            child_index = 0;
-        if (d and (sm == 2 or sm == 3))
-            sm = 0;
+        else if (dx.d and d1.child_index >= num_children)
+            d1.child_index = 0;
+        if (dx.d and (d0.sm == 2 or d0.sm == 3))
+            d0.sm = 0;
     }
 
     // fields for delegated sources
     struct {
         unsigned child_index  : 10;
         unsigned d            : 1;
-    };
+    } d1;
 
     // fields for non-delegated sources
     struct {
         unsigned sm           : 3;
-        // d field is common to both formats
-    };
+        unsigned res0         : 7;
+        unsigned d            : 1;
+    } d0;
+
+    // for when d isn't already known
+    struct {
+        unsigned unknown      : 10;
+        unsigned d            : 1;
+    } dx;
 };
 
 union Genmsi {
@@ -182,7 +189,7 @@ union Genmsi {
         unsigned busy       : 1;
         unsigned res1       : 5;
         unsigned hart_index : 14;
-    };
+    } fields;
 };
 
 class Aplic;
@@ -239,8 +246,8 @@ public:
 
         auto old_sourcecfg = sourcecfg_[i];
 
-        std::shared_ptr<Domain> new_child = new_sourcecfg.d ? children_[new_sourcecfg.child_index] : nullptr;
-        std::shared_ptr<Domain> old_child = old_sourcecfg.d ? children_[old_sourcecfg.child_index] : nullptr;
+        std::shared_ptr<Domain> new_child = new_sourcecfg.dx.d ? children_[new_sourcecfg.d1.child_index] : nullptr;
+        std::shared_ptr<Domain> old_child = old_sourcecfg.dx.d ? children_[old_sourcecfg.d1.child_index] : nullptr;
 
         if (old_child and new_child != old_child)
             old_child->undelegate(i);
@@ -253,8 +260,8 @@ public:
             target_[i].value = 0;
             clearIe(i);
             clearIp(i);
-        } else if (not source_was_active and domaincfg_.dm == Direct) {
-            target_[i].iprio = 1;
+        } else if (not source_was_active and domaincfg_.fields.dm == Direct) {
+            target_[i].dm0.iprio = 1;
         }
 
         // source may becoming pending under new source mode
@@ -278,7 +285,7 @@ public:
     void writeMmsiaddrcfg(uint32_t value) {
         if (parent())
             return;
-        if (mmsiaddrcfgh_.l)
+        if (mmsiaddrcfgh_.fields.l)
             return;
         mmsiaddrcfg_ = value;
     }
@@ -288,7 +295,7 @@ public:
             return 0;
         if (parent()) {
             auto mmsiaddrcfgh = root()->mmsiaddrcfgh_;
-            mmsiaddrcfgh.l = 1;
+            mmsiaddrcfgh.fields.l = 1;
             return mmsiaddrcfgh.value;
         }
         return mmsiaddrcfgh_.value;
@@ -297,7 +304,7 @@ public:
     void writeMmsiaddrcfgh(uint32_t value) {
         if (parent())
             return;
-        if (mmsiaddrcfgh_.l)
+        if (mmsiaddrcfgh_.fields.l)
             return;
         mmsiaddrcfgh_.value = value;
         mmsiaddrcfgh_.legalize();
@@ -314,7 +321,7 @@ public:
     void writeSmsiaddrcfg(uint32_t value) {
         if (parent())
             return;
-        if (mmsiaddrcfgh_.l)
+        if (mmsiaddrcfgh_.fields.l)
             return;
         smsiaddrcfg_ = value;
     }
@@ -330,7 +337,7 @@ public:
     void writeSmsiaddrcfgh(uint32_t value) {
         if (parent())
             return;
-        if (mmsiaddrcfgh_.l)
+        if (mmsiaddrcfgh_.fields.l)
             return;
         smsiaddrcfgh_.value = value;
         smsiaddrcfgh_.legalize();
@@ -435,13 +442,13 @@ public:
     uint32_t readGenmsi() const { return genmsi_.value; }
 
     void writeGenmsi(uint32_t value) {
-        if (domaincfg_.dm == Direct)
+        if (domaincfg_.fields.dm == Direct)
             return;
-        if (genmsi_.busy)
+        if (genmsi_.fields.busy)
             return;
         genmsi_.value = value;
         genmsi_.legalize();
-        genmsi_.busy = 1;
+        genmsi_.fields.busy = 1;
     }
 
     uint32_t readTarget(unsigned i) const { return target_.at(i).value; }
@@ -450,7 +457,7 @@ public:
         if (not sourceIsActive(i))
             return;
         Target target{value};
-        target.legalize(privilege_, DeliveryMode(domaincfg_.dm), hart_indices_);
+        target.legalize(privilege_, DeliveryMode(domaincfg_.fields.dm), hart_indices_);
         target_[i] = target;
         updateTopi();
         runCallbacksAsRequired();
@@ -483,12 +490,12 @@ public:
 
     uint32_t readClaimi(unsigned hart_index) {
         auto topi = idcs_.at(hart_index).topi;
-        if (domaincfg_.dm == Direct) {
-            auto sm = sourcecfg_[topi.iid].sm;
+        if (domaincfg_.fields.dm == Direct) {
+            auto sm = sourcecfg_[topi.fields.iid].d0.sm;
             if (topi.value == 0)
                 idcs_.at(hart_index).iforce = 0;
             else if (sm == Detached or sm == Edge0 or sm == Edge1)
-                clearIp(topi.iid);
+                clearIp(topi.fields.iid);
             runCallbacksAsRequired();
         }
         return topi.value;
@@ -625,12 +632,12 @@ private:
     void edge(unsigned i)
     {
         assert(i > 0 && i < 1024);
-        if (sourcecfg_[i].d) {
-            children_[sourcecfg_[i].child_index]->edge(i);
+        if (sourcecfg_[i].dx.d) {
+            children_[sourcecfg_[i].d1.child_index]->edge(i);
             return;
         }
         auto riv = rectifiedInputValue(i);
-        auto sm = sourcecfg_[i].sm;
+        auto sm = sourcecfg_[i].d0.sm;
         if (sm == Edge1 or sm == Edge0) {
             if (riv)
                 setIp(i);
@@ -651,26 +658,26 @@ private:
 
     bool readyToForwardViaMsi(unsigned i) const
     {
-        if (domaincfg_.dm != MSI)
+        if (domaincfg_.fields.dm != MSI)
             return false;
         if (i == 0)
-            return genmsi_.busy;
-        return domaincfg_.ie and pending(i) and enabled(i);
+            return genmsi_.fields.busy;
+        return domaincfg_.fields.ie and pending(i) and enabled(i);
     }
 
     void forwardViaMsi(unsigned i) {
         assert(readyToForwardViaMsi(i));
         if (i == 0) {
             if (msi_callback_) {
-                uint64_t addr = msiAddr(genmsi_.hart_index, 0);
-                uint32_t data = genmsi_.eiid;
+                uint64_t addr = msiAddr(genmsi_.fields.hart_index, 0);
+                uint32_t data = genmsi_.fields.eiid;
                 msi_callback_(addr, data);
             }
-            genmsi_.busy = 0;
+            genmsi_.fields.busy = 0;
         } else {
             if (msi_callback_) {
-                uint64_t addr = msiAddr(target_[i].hart_index, target_[i].guest_index);
-                uint32_t data = target_[i].eiid;
+                uint64_t addr = msiAddr(target_[i].dm1.hart_index, target_[i].dm1.guest_index);
+                uint32_t data = target_[i].dm1.eiid;
                 msi_callback_(addr, data);
             }
             clearIp(i);
@@ -687,14 +694,14 @@ private:
     {
         if (i == 0)
             return false;
-        return sourcecfg_.at(i).sm != Inactive;
+        return sourcecfg_.at(i).d0.sm != Inactive;
     }
 
     void undelegate(unsigned i)
     {
         assert(i > 0 && i < 1024);
-        if (sourcecfg_[i].d) {
-            auto child = children_[sourcecfg_[i].child_index];
+        if (sourcecfg_[i].dx.d) {
+            auto child = children_[sourcecfg_[i].d1.child_index];
             child->undelegate(i);
         }
         sourcecfg_[i] = Sourcecfg{};
@@ -707,7 +714,7 @@ private:
     {
         if (not sourceIsActive(i))
             return;
-        switch (sourcecfg_[i].sm) {
+        switch (sourcecfg_[i].d0.sm) {
             case Detached:
             case Edge0:
             case Edge1:
@@ -715,7 +722,7 @@ private:
                 break;
             case Level0:
             case Level1:
-                if (domaincfg_.dm == MSI and rectifiedInputValue(i))
+                if (domaincfg_.fields.dm == MSI and rectifiedInputValue(i))
                     setIp(i);
                 break;
             default: assert(false);
@@ -726,7 +733,7 @@ private:
     {
         if (not sourceIsActive(i))
             return;
-        switch (sourcecfg_[i].sm) {
+        switch (sourcecfg_[i].d0.sm) {
             case Detached:
             case Edge0:
             case Edge1:
@@ -734,7 +741,7 @@ private:
                 break;
             case Level0:
             case Level1:
-                if (domaincfg_.dm == MSI)
+                if (domaincfg_.fields.dm == MSI)
                     clearIp(i);
                 break;
             default:
