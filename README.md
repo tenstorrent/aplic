@@ -48,14 +48,26 @@ The `Aplic` constructor requires the number of controlled harts (1 to 16,384)
 and the number of interrupt sources (1 to 1023). If the interrupt source count
 is `N`, then the interrupt source IDs will be 1 to `N`.
 
+Example:
+```
+#include <Aplic.hpp>
+
+int main()
+{
+    unsigned num_harts = 2;
+    unsigned num_sources = 32;
+    TT_APLIC::Aplic aplic(num_harts, num_sources);
+}
+```
+
+### Providing Callbacks
+
 The callbacks can be set using the `setDirectCallback` and `setMsiCallback`
 methods. The callbacks have the signatures in the example below. The return
 value indicates success.
 
-Example usage:
+Example:
 ```
-#include <Aplic.hpp>
-
 bool direct_callback(int hart_index, TT_APLIC::Privilege privilege, bool xeip) {
     if (privilege == TT_APLIC::Machine) {
         // set mip.MEIP to xeip
@@ -68,15 +80,6 @@ bool direct_callback(int hart_index, TT_APLIC::Privilege privilege, bool xeip) {
 bool msi_callback(uint64_t addr, uint32_t data) {
     // send MSI to IMSIC
     return true;
-}
-
-int main()
-{
-    unsigned num_harts = 2;
-    unsigned num_sources = 32;
-    TT_APLIC::Aplic aplic(num_harts, num_sources);
-    aplic.setDirectCallback(direct_callback);
-    aplic.setMsiCallback(msi_callback);
 }
 ```
 
@@ -125,7 +128,7 @@ to the order in which child domains are created for a given parent.
 If `createDomain` is unable to instantiate a domain, it will throw an exception
 with a diagnostic message.
 
-Example usage:
+Example:
 ```
 uint64_t base = 0x1000000;
 uint64_t size = 0x8000;
@@ -163,7 +166,7 @@ all have a parameter of type `uint32_t` for the write data. However, some CSRs
 have data types for representing the individual fields of the CSR, such as
 `Domaincfg`, `Target`, and `Sourcecfg`.
 
-Example usage:
+Example:
 ```
 uint32_t value = root->readDomaincfg();
 
@@ -177,13 +180,13 @@ root->writeDomaincfg(domaincfg.value);
 These methods enforce various constraints as required by the spec, such as
 read-only, WARL, and so forth.
 
-## Aplic Class CSR Interface
+### Aplic Class CSR Interface
 
 As mentioned, in addition to the per-CSR read and write methods in the `Domain`
 class, CSRs can also be accessed via the `read` and `write` methods of the
 `Aplic` class.
 
-Example usage:
+Example:
 ```
 uint64_t addr = 0x1000000;
 if (aplic.containsAddr(addr)) {
