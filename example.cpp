@@ -32,17 +32,23 @@ main(int, char**)
   aplic.setDirectCallback(callback);
   aplic.setMsiCallback(imsicFunc);
 
-  // root
-  //  --> child
-  //  --> child2
-  //    --> child3
+  // In this example, the domain configuration will be:
+  // root (machine, MSI), harts: 0
+  //  --> child (supervisor, direct), harts: 0
+  //  --> child2 (machine), harts: 1
+  //    --> child3 (supervisor, MSI), harts: 1
+  // And the sources configuration will be:
+  // source1: active in child   ; source mode of Level1 ; target hart 0 with priority 1
+  // source2: active in root    ; source mode of Level1 ; target hart 1
+  // source3: active in child3  ; source mode of Edge0  ; target hart 1
 
   // Create root and child domains.
-  unsigned hartIndices[] = {0, 1};
-  auto root = aplic.createDomain("root", nullptr, addr, domainSize, Machine, hartIndices);
-  auto child = aplic.createDomain("child", root, addr + domainSize, domainSize, Supervisor, hartIndices);
-  auto child2 = aplic.createDomain("child2", root, addr + 2*domainSize, domainSize, Machine, hartIndices);
-  auto child3 = aplic.createDomain("child3", child2, addr + 3*domainSize, domainSize, Supervisor, hartIndices);
+  unsigned hartIndices0[] = {0};
+  unsigned hartIndices1[] = {1};
+  auto root = aplic.createDomain("root", nullptr, addr, domainSize, Machine, hartIndices0);
+  auto child = aplic.createDomain("child", root, addr + domainSize, domainSize, Supervisor, hartIndices0);
+  auto child2 = aplic.createDomain("child2", root, addr + 2*domainSize, domainSize, Machine, hartIndices1);
+  auto child3 = aplic.createDomain("child3", child2, addr + 3*domainSize, domainSize, Supervisor, hartIndices1);
 
   // Aplic creation done. Test APIs.
 
