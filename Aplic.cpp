@@ -1,136 +1,169 @@
-#include <iostream>
-#include <cassert>
-#include <stdexcept>
 #include "Aplic.hpp"
-
 
 using namespace TT_APLIC;
 
+std::shared_ptr<Domain> Aplic::createDomain(
+    const std::string& name,
+    std::shared_ptr<Domain> parent,
+    uint64_t base,
+    uint64_t size,
+    Privilege privilege,
+    std::span<const unsigned> hart_indices
+) {
+    if (base % 0x1000 != 0)
+        throw std::runtime_error("base address of domain '" + name + "' (" + std::to_string(base) + ") is not aligned to 4KiB\n");
 
-Aplic::Aplic(unsigned hartCount, unsigned interruptCount, bool autoDeliver)
-  : hartCount_(hartCount), interruptCount_(interruptCount), autoDeliver_(autoDeliver)
-{
-  interruptStates_.resize(interruptCount+1);
-}
+    if (size < 0x4000)
+        throw std::runtime_error("size of domain '" + name + "' (" + std::to_string(size) + ") is less than minimum of 16KiB\n");
 
+    if (size % 4096 != 0)
+        throw std::runtime_error("size of domain '" + name + "' (" + std::to_string(size) + ") is not aligned to 4KiB\n");
 
-bool
-Aplic::read(uint64_t addr, unsigned size, uint64_t& value)
-{
-  if ((addr & 3) != 0 or size != 4)
-    return false;  // Address must be word aligned. Size must be word.
-
-  auto domain = findDomainByAddr(addr);
-  if (not domain)
-    return false;
-
-  return domain->read(addr, size, value);
-}
-
-
-bool
-Aplic::write(uint64_t addr, unsigned size, uint64_t value)
-{
-  size_t num_undelivered = undeliveredInterrupts_.size();
-  if (num_undelivered > 0)
-    {
-      std::cerr << "Warning: discarding " << num_undelivered << " undelivered interrupts due to APLIC write\n";
-      undeliveredInterrupts_.clear();
+    for (auto domain : domains_) {
+        if (domain->overlaps(base, size))
+            throw std::runtime_error("control regions for domains '" + name + "' and '" + domain->name_ + "' overlap\n");
     }
 
-  if ((addr & 3) != 0 or size != 4)
-    return false;  // Address must be word aligned. Size must be word.
+    if (not root_ and parent)
+        throw std::runtime_error("first domain created must be root\n");
 
-  auto domain = findDomainByAddr(addr);
-  if (not domain)
-    return false;
+    if (not parent and privilege != Machine)
+        throw std::runtime_error("root domain must be machine-level\n");
 
-  return domain->write(addr, size, value);
-}
+    if (privilege == Supervisor and parent->privilege_ == Supervisor)
+        throw std::runtime_error("parent of supervisor-level domain must be machine-level\n");
 
+    if (root_ and not parent)
+        throw std::runtime_error("cannot have more than one root domain\n");
 
-bool
-Aplic::setSourceState(unsigned id, bool state)
-{
-  if (id == 0 or id > interruptCount_ or not root_)
-    return false;
+    if (hart_indices.size() == 0)
+        throw std::runtime_error("domain '" + name + "' must have at least one hart\n");
 
-  bool prev = interruptStates_.at(id);
-  if (not root_->setSourceState(id, prev, state))
-    return false;
-  interruptStates_.at(id) = state;
-  return true;
-}
-
-
-std::shared_ptr<Domain>
-Aplic::createDomain(const std::string& name, std::shared_ptr<Domain> parent, uint64_t addr, uint64_t size, bool isMachine)
-{
-  if (addr % 4096 != 0)
-    return nullptr;
-
-  if (size < 16*1024)
-    return nullptr;
-
-  if (size % 4096 != 0)
-    return nullptr;
-
-  for (auto domain : domains_)
-      if (domain->overlaps(addr, size))
-        return nullptr;
-
-  if (not root_ and parent)
-    return nullptr;   // First created domain must be root.
-
-  if (not root_ and not isMachine)
-    return nullptr;   // Root domain must be at machine privilege.
-
-  if (not isMachine and not parent)
-    return nullptr;   // Supervisor domain must not be root.
-
-  if (not isMachine and not parent->isMachinePrivilege())
-    return nullptr;   // Supervisor parent must be machine.
-
-  if (root_ and not parent)
-    return nullptr;   // Cannot have more than one root.
-
-  auto domain = std::make_shared<Domain>(this, name, parent, addr, size, hartCount_,
-                                         interruptCount_, isMachine);
-
-  domain->setImsicMethod(imsicFunc_);
-  domain->setDeliveryMethod(deliveryFunc_);
-
-  domains_.push_back(domain);
-
-  if (not root_)
-    root_ = domain;
-
-  if (parent)
-    parent->addChild(domain);
-
-  return domain;
-}
-
-void
-Aplic::enqueueInterrupt(Domain *domain, unsigned id)
-{
-  if (autoDeliver_)
-    domain->deliverInterrupt(id);
-  else
-    undeliveredInterrupts_.push_back(Interrupt{domain, id});
-}
-
-bool
-Aplic::deliverInterrupt(unsigned id)
-{
-  for (auto it = undeliveredInterrupts_.begin(); it != undeliveredInterrupts_.end(); ++it)
-    {
-      if (it->id == id)
-        {
-          it->domain->deliverInterrupt(it->id);
-          undeliveredInterrupts_.erase(it);
-          return true;
+    for (auto domain : domains_) {
+        if (domain->privilege_ != privilege)
+            continue;
+        for (unsigned i : hart_indices) {
+            auto it = std::find(domain->hart_indices_.begin(), domain->hart_indices_.end(), i);
+            if (it != domain->hart_indices_.end()) {
+                std::string priv_str = privilege == Machine ? "machine" : "supervisor";
+                std::string msg = "hart " + std::to_string(i) + " belongs to multiple " + priv_str + "-level domains: '" + name + "' and '" + domain->name_ + "'\n";
+                throw std::runtime_error(msg);
+            }
         }
     }
-  return false;
+    for (unsigned i : hart_indices) {
+        if (i >= num_harts_) {
+            std::string msg = "for domain '" + name + "', hart index " + std::to_string(i) + " must be less than number of harts, " + std::to_string(num_harts_) + "\n";
+            throw std::runtime_error(msg);
+        }
+    }
+    if (privilege == Supervisor) {
+        for (unsigned i : hart_indices) {
+            auto it = std::find(parent->hart_indices_.begin(), parent->hart_indices_.end(), i);
+            if (it == parent->hart_indices_.end()) {
+                std::string msg = "hart " + std::to_string(i) + " belongs to supervisor-level domain '" + name + "' but not to its machine-level parent domain, '" + parent->name_ + "'\n";
+                throw std::runtime_error(msg);
+            }
+        }
+    }
+
+    auto domain = std::shared_ptr<Domain>(new Domain(this, name, parent, base, size, privilege, hart_indices));
+    if (parent)
+        parent->children_.push_back(domain);
+    if (!root_)
+        root_ = domain;
+    domain->setDirectCallback(direct_callback_);
+    domain->setMsiCallback(msi_callback_);
+    domains_.push_back(domain);
+    return domain;
+}
+
+std::shared_ptr<Domain> Aplic::findDomainByName(std::string_view name) const
+{
+    for (auto domain : domains_)
+        if (domain->name_ == name)
+            return domain;
+    return nullptr;
+}
+
+std::shared_ptr<Domain> Aplic::findDomainByAddr(uint64_t addr) const
+{
+    for (auto domain : domains_)
+        if (domain->containsAddr(addr))
+            return domain;
+    return nullptr;
+}
+
+void Aplic::reset()
+{
+    for (unsigned i = 0; i <= num_sources_; i++)
+        source_states_[i] = 0;
+    if (root_)
+        root_->reset();
+}
+
+bool Aplic::containsAddr(uint64_t addr) const {
+    if (findDomainByAddr(addr) == nullptr)
+        return false;
+    return true;
+}
+
+bool Aplic::read(uint64_t addr, size_t size, uint32_t& data)
+{
+    if (size != 4)
+        return false;
+    if (addr % 4 != 0)
+        return false;
+    auto domain = findDomainByAddr(addr);
+    if (domain == nullptr)
+        return false;
+    data = domain->read(addr);
+    return true;
+}
+
+bool Aplic::write(uint64_t addr, size_t size, uint32_t data)
+{
+    if (size != 4)
+        return false;
+    if (addr % 4 != 0)
+        return false;
+    auto domain = findDomainByAddr(addr);
+    if (domain == nullptr)
+        return false;
+    domain->write(addr, data);
+    return true;
+}
+
+void Aplic::setDirectCallback(DirectDeliveryCallback callback)
+{
+    direct_callback_ = callback;
+    if (root_)
+        root_->setDirectCallback(callback);
+}
+
+void Aplic::setMsiCallback(MsiDeliveryCallback callback)
+{
+    msi_callback_ = callback;
+    if (root_)
+        root_->setMsiCallback(callback);
+}
+
+void Aplic::setSourceState(unsigned i, bool state)
+{
+    assert(i > 0 && i < 1024);
+    bool prev_state = source_states_.at(i);
+    source_states_[i] = state;
+    if (prev_state != state)
+        root_->edge(i);
+}
+
+bool Aplic::forwardViaMsi(unsigned i)
+{
+    for (auto domain : domains_) {
+        if (domain->readyToForwardViaMsi(i)) {
+            domain->forwardViaMsi(i);
+            return true;
+        }
+    }
+    return false;
 }
