@@ -270,6 +270,9 @@
     register domaincfg is also one. If and when an MSI is sent, the source's
     interrupt pending bit is cleared.
 
-66. (§4.9.2, p. 53) As soon as a level-sensitive interrupt is forwarded by MSI,
+66. (§4.9.1, p. 52) An MSI's 32-bit data is always written in little-endian
+    byte order, regardless of the BE field of the domain's domaincfg register.
+
+67. (§4.9.2, p. 53) As soon as a level-sensitive interrupt is forwarded by MSI,
     the APLIC clears the pending bit for the interrupt source and then ignores
     the source until its incoming signal has been de-asserted.
