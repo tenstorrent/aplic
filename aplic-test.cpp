@@ -912,8 +912,7 @@ void test_15_genmsi()
   root->writeDomaincfg(dcfg.value);
   root->writeGenmsi(0x12345678);
   read_genmsi = root->readGenmsi();
-  std::cerr << "GENMSI: " << read_genmsi << "\n";
-  // assert(read_genmsi == 0); // TODO
+  assert(read_genmsi == 0);
 
   std::cerr << "test_15_genmsi passed.\n";
 }
