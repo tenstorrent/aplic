@@ -996,57 +996,53 @@ test_16_sourcecfg_pending()
 }
 
 
-#if 0
 void test_17_pending_extended()
 {
   unsigned hartCount = 1, interruptCount = 5;
   Aplic aplic(hartCount, interruptCount);
   
   uint64_t addr = 0x1000000, domainSize = 32 * 1024;
-  auto root = aplic.createDomain("root", nullptr, addr, domainSize, Machine);
+  unsigned hartIndices[] = {0};
+  auto root = aplic.createDomain("root", nullptr, addr, domainSize, Machine, hartIndices);
   
   Domaincfg dcfg {0};
   dcfg.fields.dm = 0;
   dcfg.fields.ie = 1;
-  root->write(root->csrAddress(CsrNumber::Domaincfg), sizeof(CsrValue), dcfg.value);
+  root->writeDomaincfg(dcfg.value);
   
   // Configure source 1 as Level1.
-  uint64_t sourcecfg1_addr = root->csrAddress(CsrNumber::Sourcecfg1);
   Sourcecfg cfg_level1{};
   cfg_level1.d0.sm = 6;  // Level1 active-high.
-  aplic.write(sourcecfg1_addr, 4, cfg_level1.value);
+  root->writeSourcecfg(1, cfg_level1.value);
   
   // For level-sensitive sources, the pending bit should mirror the external input.
-  auto setip_addr = root->csrAddress(CsrNumber::Setip0);
   uint64_t setip_value = 0;
   
   // Set external input high and verify pending bit is set.
   aplic.setSourceState(1, true);
-  aplic.read(setip_addr, 4, setip_value);
+  setip_value = root->readSetip(0);
   assert(setip_value & (1 << 1));
   
   // Now, set external input low and verify pending bit clears.
   aplic.setSourceState(1, false);
-  aplic.read(setip_addr, 4, setip_value);
+  setip_value = root->readSetip(0);
   // For level-sensitive sources in direct delivery mode, the pending bit should follow the input.
   assert(!(setip_value & (1 << 1)));
   
   // For an edge-sensitive source, in contrast, if no transition occurs, the pending bit remains unchanged.
-  uint64_t sourcecfg2_addr = root->csrAddress(Domain::advance(CsrNumber::Sourcecfg1, 1));
   Sourcecfg cfg_edge1{};
-  cfg_edge1.d0.sm = unsigned(SourceMode::Edge1);
-  aplic.write(sourcecfg2_addr, 4, cfg_edge1.value);
+  cfg_edge1.d0.sm = Edge1;
+  root->writeSourcecfg(2, cfg_edge1.value);
   // Ensure input is low.
   aplic.setSourceState(2, false);
-  aplic.write(root->csrAddress(CsrNumber::Setip0), 4, 0);  // clear pending
+  root->writeClripnum(2);  // clear pending
   aplic.setSourceState(2, false);
-  aplic.read(setip_addr, 4, setip_value);
+  setip_value = root->readSetip(0);
   // No transition: pending should not be set.
   assert(!(setip_value & (1 << 2)));
   
   std::cerr << "Test 17 pending extended passed.\n";
 }
-#endif
 
 
 
@@ -1069,6 +1065,6 @@ main(int, char**)
   test_14_set_and_clear_pending();
   test_15_genmsi();
   test_16_sourcecfg_pending();
-  //test_17_pending_extended();
+  test_17_pending_extended();
   return 0;
 }
