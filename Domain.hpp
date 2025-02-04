@@ -233,6 +233,8 @@ public:
     void writeDomaincfg(uint32_t value) {
         domaincfg_.value = value;
         domaincfg_.legalize();
+        if (domaincfg_.fields.dm == Direct)
+          genmsi_.value = 0;
         runCallbacksAsRequired();
     }
 
