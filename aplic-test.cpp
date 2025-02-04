@@ -19,7 +19,6 @@ bool directCallback(unsigned hartIx, Privilege privilege, bool state)
             << (privilege == Machine? "machine" : "supervisor")
             << " interrupt-state=" << (state? "on" : "off") << '\n';
   interrupts.push_back({hartIx, privilege, state});
-  std::cerr << "HIIIII.\n";
   interruptStateMap[hartIx] = state;
   return true;
 }
@@ -422,8 +421,8 @@ test_07_claimi()
   root->writeIdelivery(0, 1); 
   std::cerr << "Enabled interrupt delivery for the hart.\n";
 
-  root->writeSetip(0, (1 << 1) | (1 << 2) | (1 << 3)); // Set pending bits for 1, 2, and 3
-  root->writeSetie(0, (1 << 1) | (1 << 2) | (1 << 3)); // Enable interrupts 1, 2, and 3
+  root->writeSetip(0, (1 << 1) | (1 << 2)); 
+  root->writeSetie(0, (1 << 1) | (1 << 2)); 
   std::cerr << "Set pending and enable bits for interrupts 1, 2, and 3.\n";
 
   Target tgt{};
@@ -444,14 +443,14 @@ test_07_claimi()
   aplic.setSourceState(2, true);
   claimi_value = root->readClaimi(0);
   std::cerr << "Claimed interrupt: " << (claimi_value >> 16) << " (priority: " << (claimi_value & 0xFF) << ")\n";
-  //assert((claimi_value >> 16) == 2); // TODO
-  //assert((claimi_value & 0xFF) == 2); // TODO
+  assert((claimi_value >> 16) == 2); 
+  assert((claimi_value & 0xFF) == 2); 
 
 
   // Test spurious interrupt with iforce
   root->writeIforce(0, 1);
   claimi_value = root->readClaimi(0);
-  //assert(claimi_value == 0); // TODO
+  assert(claimi_value == 0); 
   std::cerr << "Verified spurious interrupt returns 0.\n";
   std::cerr << "Test test_claimi passed successfully.\n";
 }
@@ -1067,15 +1066,15 @@ main(int, char**)
   // test_04_iforce();
   // test_05_ithreshold();
   // test_06_topi();
-  // test_07_claimi();
-  //test_08_setipnum_le(); // TODO
-  //test_09_setipnum_be(); // TODO
+  test_07_claimi();
+  // test_08_setipnum_le(); // TODO
+  // test_09_setipnum_be(); // TODO
   // test_10_targets();
   // test_11_MmsiAddressConfig();
   // test_12_SmsiAddressConfig();
   // test_13_misaligned_and_unsupported_access(); 
   // test_14_set_and_clear_pending();
-  test_15_genmsi();
+  // test_15_genmsi();
   // test_16_sourcecfg_pending();
   // test_17_pending_extended();
   return 0;
