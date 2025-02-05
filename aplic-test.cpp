@@ -1049,8 +1049,8 @@ main(int, char**)
   test_05_ithreshold();
   test_06_topi();
   test_07_claimi();
-  // test_08_setipnum_le(); // TODO
-  // test_09_setipnum_be(); // TODO
+  test_08_setipnum_le();
+  test_09_setipnum_be();
   test_10_targets();
   test_11_MmsiAddressConfig();
   test_12_SmsiAddressConfig();
