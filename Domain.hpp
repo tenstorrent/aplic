@@ -425,21 +425,13 @@ public:
         runCallbacksAsRequired();
     }
 
-    uint32_t readSetipnumLe() const {
-        assert(0);
-    }
+    uint32_t readSetipnumLe() const { return 0; }
 
-    void writeSetipnumLe(uint32_t /*value*/) {
-        assert(0);
-    }
+    void writeSetipnumLe(uint32_t value) { writeSetipnum(value); }
 
-    uint32_t readSetipnumBe() const {
-        assert(0);
-    }
+    uint32_t readSetipnumBe() const { return 0; }
 
-    void writeSetipnumBe(uint32_t /*value*/) {
-        assert(0);
-    }
+    void writeSetipnumBe(uint32_t value) { writeSetipnum(value); }
 
     uint32_t readGenmsi() const { return genmsi_.value; }
 
@@ -508,7 +500,23 @@ public:
 private:
     Domain(const Aplic *aplic, std::string_view name, std::shared_ptr<Domain> parent, uint64_t base, uint64_t size, Privilege privilege, std::span<const unsigned> hart_indices);
 
+    bool use_be(uint64_t addr)
+    {
+        uint64_t offset = addr - base_;
+        bool is_setipnum_le = offset == 0x2000;
+        bool is_setipnum_be = offset == 0x2004;
+        return (domaincfg_.fields.be or is_setipnum_be) and not is_setipnum_le;
+    }
+
     uint32_t read(uint64_t addr)
+    {
+        uint32_t data = read_le(addr);
+        if (use_be(addr))
+            data = __builtin_bswap32(data);
+        return data;
+    }
+
+    uint32_t read_le(uint64_t addr)
     {
         assert(addr % 4 == 0);
         assert(addr >= base_ and addr < base_ + size_);
@@ -564,6 +572,13 @@ private:
     }
 
     void write(uint64_t addr, uint32_t data)
+    {
+        if (use_be(addr))
+            data = __builtin_bswap32(data);
+        write_le(addr, data);
+    }
+
+    void write_le(uint64_t addr, uint32_t data)
     {
         assert(addr % 4 == 0);
         assert(addr >= base_ and addr < base_ + size_);
@@ -694,7 +709,7 @@ private:
 
     bool sourceIsActive(unsigned i) const
     {
-        if (i == 0)
+        if (i == 0 or i >= 1024)
             return false;
         if (sourcecfg_.at(i).dx.d)
             return false;
