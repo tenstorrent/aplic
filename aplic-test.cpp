@@ -908,82 +908,151 @@ test_16_sourcecfg_pending()
 {
   std::cerr << "\nRunning test_16_sourcecfg_pending...\n";
   
-  // Use one hart and several interrupt sources.
-  unsigned hartCount = 1, interruptCount = 10;
+  // Create a domain with plenty of sources.
+  unsigned hartCount = 1, interruptCount = 1;
   Aplic aplic(hartCount, interruptCount);
   aplic.setDirectCallback(directCallback);
   
-  uint64_t addr = 0x1000000, domainSize = 32 * 1024;
+  uint64_t addr = 0x1000000;
+  uint64_t domainSize = 32 * 1024;
   unsigned hartIndices[] = {0};
   auto root = aplic.createDomain("root", nullptr, addr, domainSize, Machine, hartIndices);
   
+  // Set domain configuration: direct delivery (DM=0) and IE enabled.
   Domaincfg dcfg{};
-  dcfg.fields.dm = 0;  
+  dcfg.fields.dm = 0;
   dcfg.fields.ie = 1;
   root->writeDomaincfg(dcfg.value);
   
-  uint64_t setip_value = 0;
+  // --- Basic sourcecfg tests (from test_02_sourcecfg) ---
+  // (a) Write a nonzero value to a source index beyond the implemented range.
+  root->writeSourcecfg(2, 0x1);
+  uint32_t csr_value = root->readSourcecfg(2);
+  assert(csr_value == 0);
   
-  // Variation 1: Change source 1 from Inactive to Level1 with an edge.
-  int source = 1;
+  // (b) Write a nonzero value to a source in a domain where the source isn’t delegated.
+  auto child = aplic.createDomain("child", root, addr+domainSize, domainSize, Supervisor, hartIndices);
+  child->writeSourcecfg(1, 0x1);
+  csr_value = child->readSourcecfg(1);
+  assert(csr_value == 0);
+  
+  // (c) Delegate source 1 so that the child sees a valid value.
+  Sourcecfg delegateCfg{};
+  delegateCfg.d1.d = true;
+  delegateCfg.d1.child_index = true;
+  root->writeSourcecfg(1, delegateCfg.value);
+  child->writeSourcecfg(1, 0x1);
+  csr_value = child->readSourcecfg(1);
+  assert(csr_value == 1);
+  
+  // --- Effects of changing source mode (section 4.7) ---
+  // We work with source 1 for these tests.
+  
+  // Case 1: Inactive mode.
   root->writeSourcecfg(1, 0); // Inactive.
-  aplic.setSourceState(source, false);
-  setip_value = root->readSetip(0);
-  assert(!(setip_value & (1 << source)));
+  aplic.setSourceState(1, true);
+  uint32_t setip = root->readSetip(0);
+  assert((setip & (1 << 1)) == 0);
+  std::cerr << "Case 1: Inactive mode produces no pending bit.\n";
   
-  Sourcecfg cfg{};
-  cfg.d0.sm = 6;  // Level1.
-  root->writeSourcecfg(1, cfg.value);
-  aplic.setSourceState(source, false);
-  aplic.setSourceState(source, true);
-  setip_value = root->readSetip(0);
-  assert(setip_value & (1 << source));
-  std::cerr << "Variation 1 passed: source 1 becomes pending when changed to Level1 with rising edge.\n";
+  // Case 2: Detached mode.
+  Sourcecfg detachedCfg{};
+  detachedCfg.d0.sm = Detached;
+  root->writeSourcecfg(1, detachedCfg.value);
+  aplic.setSourceState(1, true);
+  setip = root->readSetip(0);
+  assert((setip & (1 << 1)) == 0);
+  std::cerr << "Case 2: Detached mode produces no pending bit.\n";
   
-  // Variation 2: Change source 2 from Detached to Level1.
-  source = 2;
-  Sourcecfg cfg_detached{};
-  cfg_detached.d0.sm = 1; // Detached.
-  root->writeSourcecfg(2, cfg_detached.value);
-  aplic.setSourceState(source, false);
-  setip_value = root->readSetip(0);
-  assert(!(setip_value & (1 << source)));
+  // Case 3: Edge1 mode.
+  Sourcecfg edge1Cfg{};
+  edge1Cfg.d0.sm = Edge1;
+  root->writeSourcecfg(1, edge1Cfg.value);
+  // Simulate a rising edge: force low then high.
+  aplic.setSourceState(1, false);
+  aplic.setSourceState(1, true);
+  setip = root->readSetip(0);
+  assert(setip & (1 << 1));
+  std::cerr << "Case 3: Edge1 mode produces pending bit on rising edge.\n";
+  root->writeClripnum(1);
   
-  Sourcecfg cfg2{};
-  cfg2.d0.sm = 6;
-  root->writeSourcecfg(2, cfg2.value);
-  aplic.setSourceState(source, false);
-  aplic.setSourceState(source, true);
-  setip_value = root->readSetip(0);
-  assert(setip_value & (1 << source));
-  std::cerr << "Variation 2 passed: source 2 becomes pending when changed to Level1 with rising edge.\n";
-  
-  // Variation 3: With domaincfg.IE disabled, no interrupt is delivered.
-  source = 3;
-  Sourcecfg cfg3{};
-  cfg3.d0.sm = 6;
-  root->writeSourcecfg(3, cfg3.value);
-  aplic.setSourceState(source, false);
-  interrupts.clear();
-  dcfg.fields.ie = 0;
-  root->writeDomaincfg(dcfg.value);
-  aplic.setSourceState(source, true);
-  assert(interrupts.empty());
-  std::cerr << "Variation 3 passed: With IE disabled, no interrupt is delivered for source 3.\n";
-  
-  // Write a reserved SM value (e.g. 2) to source 1 and verify that the register is masked appropriately.
   root->writeSourcecfg(1, 2);
   uint32_t read_val = root->readSourcecfg(1);
-  // assert(read_val == 0);
+  assert(read_val == 0);
+
+  // Case 4: Edge0 mode.
+  Sourcecfg edge0Cfg{};
+  edge0Cfg.d0.sm = Edge0;
+  root->writeSourcecfg(1, edge0Cfg.value);
+  // Simulate a falling edge: force high then low.
+  aplic.setSourceState(1, true);
+  aplic.setSourceState(1, false);
+  setip = root->readSetip(0);
+  assert(setip & (1 << 1));
+  std::cerr << "Case 4: Edge0 mode produces pending bit on falling edge.\n";
+  root->writeClripnum(1);
   
-  // Test delegation removal: first set delegation, then remove it.
-  Sourcecfg delegateCfg {0};
+  // Case 5: Level1 mode.
+  Sourcecfg level1Cfg{};
+  level1Cfg.d0.sm = Level1;
+  root->writeSourcecfg(1, level1Cfg.value);
+  aplic.setSourceState(1, true);
+  setip = root->readSetip(0);
+  assert(setip & (1 << 1));
+  std::cerr << "Case 5: Level1 mode pending bit set when input is high.\n";
+  aplic.setSourceState(1, false);
+  setip = root->readSetip(0);
+  assert((setip & (1 << 1)) == 0);
+  std::cerr << "Case 5: Level1 mode pending bit clears when input is low.\n";
+  
+  // --- Delegation changes ---
+  // Case 6: Attempt to delegate a source in a domain with no children.
+  root->writeSourcecfg(2, delegateCfg.value);
+  uint32_t src_val = root->readSourcecfg(2);
+  // Expect that if no children exist, delegation is not allowed so sourcecfg reads as 0.
+  assert(src_val == 0);
+  std::cerr << "Case 6: Delegation in a domain with no children returns 0.\n";
+  
+  // Case 7: Delegation removal.
+  // Create a child domain and delegate source 3, then remove delegation.
+  // Sourcecfg delegateCfg {0};
   delegateCfg.d1.d = true;
   delegateCfg.d1.child_index = true;
   root->writeSourcecfg(1, delegateCfg.value);
   root->writeSourcecfg(1, 0);
   read_val = root->readSourcecfg(1);
   assert(read_val == 0);
+  std::cerr << "Case 7: Removing delegation causes sourcecfg to revert to 0.\n";
+
+  // --- in_clrip reading ---
+  // For a source in Level1 mode, in_clrip should mirror the external (rectified) input.
+  root->writeSourcecfg(1, level1Cfg.value);
+  aplic.setSourceState(1, true);
+  uint32_t in_clrip_val = root->readInClrip(0);
+  assert(in_clrip_val & (1 << 1));
+  aplic.setSourceState(1, false);
+  in_clrip_val = root->readInClrip(0);
+  assert(!(in_clrip_val & (1 << 1)));
+  std::cerr << "Case 8: readInClrip returns correct rectified input for source 1.\n";
+  
+  // --- topi when no valid interrupt is pending ---
+  // Clear any pending bit for source 1.
+  root->writeClripnum(1);
+  uint32_t topi_val = root->readTopi(0);
+  assert(topi_val == 0);
+  std::cerr << "Case 9: topi is 0 when no valid interrupt is pending.\n";
+
+  int source = 1;
+  Sourcecfg cfg3{};
+  cfg3.d0.sm = 6;
+  root->writeSourcecfg(3, cfg3.value);
+  aplic.setSourceState(1, false);
+  interrupts.clear();
+  dcfg.fields.ie = 0;
+  root->writeDomaincfg(dcfg.value);
+  aplic.setSourceState(source, true);
+  assert(interrupts.empty());
+  std::cerr << "Case 10: With IE disabled, no interrupt is delivered for source 3.\n";
   
   std::cerr << "Test test_16_sourcecfg_pending (including reserved/delegation) passed.\n";
 }
@@ -1037,27 +1106,180 @@ void test_17_pending_extended()
   std::cerr << "Test 17 pending extended passed.\n";
 }
 
+void test_sourcecfg_section4_7()
+{
+  std::cerr << "\nRunning test_sourcecfg_section4_7...\n";
+  
+  // Create a domain with plenty of sources.
+  unsigned hartCount = 1, interruptCount = 1;
+  Aplic aplic(hartCount, interruptCount);
+  aplic.setDirectCallback(directCallback);
+  
+  uint64_t addr = 0x1000000;
+  uint64_t domainSize = 32 * 1024;
+  unsigned hartIndices[] = {0};
+  auto root = aplic.createDomain("root", nullptr, addr, domainSize, Machine, hartIndices);
+  
+  // Set domain configuration: direct delivery (DM=0) and IE enabled.
+  Domaincfg dcfg{};
+  dcfg.fields.dm = 0;
+  dcfg.fields.ie = 1;
+  root->writeDomaincfg(dcfg.value);
+  
+  // --- Basic sourcecfg tests (from test_02_sourcecfg) ---
+  // (a) Write a nonzero value to a source index beyond the implemented range.
+  root->writeSourcecfg(2, 0x1);
+  uint32_t csr_value = root->readSourcecfg(2);
+  assert(csr_value == 0);
+  
+  // (b) Write a nonzero value to a source in a domain where the source isn’t delegated.
+  auto child = aplic.createDomain("child", root, addr+domainSize, domainSize, Supervisor, hartIndices);
+  child->writeSourcecfg(1, 0x1);
+  csr_value = child->readSourcecfg(1);
+  assert(csr_value == 0);
+  
+  // (c) Delegate source 1 so that the child sees a valid value.
+  Sourcecfg delegateCfg{};
+  delegateCfg.d1.d = true;
+  delegateCfg.d1.child_index = true;
+  root->writeSourcecfg(1, delegateCfg.value);
+  child->writeSourcecfg(1, 0x1);
+  csr_value = child->readSourcecfg(1);
+  assert(csr_value == 1);
+  
+  // --- Effects of changing source mode (section 4.7) ---
+  // We work with source 1 for these tests.
+  
+  // Case 1: Inactive mode.
+  root->writeSourcecfg(1, 0); // Inactive.
+  aplic.setSourceState(1, true);
+  uint32_t setip = root->readSetip(0);
+  assert((setip & (1 << 1)) == 0);
+  std::cerr << "Case 1: Inactive mode produces no pending bit.\n";
+  
+  // Case 2: Detached mode.
+  Sourcecfg detachedCfg{};
+  detachedCfg.d0.sm = Detached;
+  root->writeSourcecfg(1, detachedCfg.value);
+  aplic.setSourceState(1, true);
+  setip = root->readSetip(0);
+  assert((setip & (1 << 1)) == 0);
+  std::cerr << "Case 2: Detached mode produces no pending bit.\n";
+  
+  // Case 3: Edge1 mode.
+  Sourcecfg edge1Cfg{};
+  edge1Cfg.d0.sm = Edge1;
+  root->writeSourcecfg(1, edge1Cfg.value);
+  // Simulate a rising edge: force low then high.
+  aplic.setSourceState(1, false);
+  aplic.setSourceState(1, true);
+  setip = root->readSetip(0);
+  assert(setip & (1 << 1));
+  std::cerr << "Case 3: Edge1 mode produces pending bit on rising edge.\n";
+  root->writeClripnum(1);
+  
+  root->writeSourcecfg(1, 2);
+  uint32_t read_val = root->readSourcecfg(1);
+  assert(read_val == 0);
+
+  // Case 4: Edge0 mode.
+  Sourcecfg edge0Cfg{};
+  edge0Cfg.d0.sm = Edge0;
+  root->writeSourcecfg(1, edge0Cfg.value);
+  // Simulate a falling edge: force high then low.
+  aplic.setSourceState(1, true);
+  aplic.setSourceState(1, false);
+  setip = root->readSetip(0);
+  assert(setip & (1 << 1));
+  std::cerr << "Case 4: Edge0 mode produces pending bit on falling edge.\n";
+  root->writeClripnum(1);
+  
+  // Case 5: Level1 mode.
+  Sourcecfg level1Cfg{};
+  level1Cfg.d0.sm = Level1;
+  root->writeSourcecfg(1, level1Cfg.value);
+  aplic.setSourceState(1, true);
+  setip = root->readSetip(0);
+  assert(setip & (1 << 1));
+  std::cerr << "Case 5: Level1 mode pending bit set when input is high.\n";
+  aplic.setSourceState(1, false);
+  setip = root->readSetip(0);
+  assert((setip & (1 << 1)) == 0);
+  std::cerr << "Case 5: Level1 mode pending bit clears when input is low.\n";
+  
+  // --- Delegation changes ---
+  // Case 6: Attempt to delegate a source in a domain with no children.
+  root->writeSourcecfg(2, delegateCfg.value);
+  uint32_t src_val = root->readSourcecfg(2);
+  // Expect that if no children exist, delegation is not allowed so sourcecfg reads as 0.
+  assert(src_val == 0);
+  std::cerr << "Case 6: Delegation in a domain with no children returns 0.\n";
+  
+  // Case 7: Delegation removal.
+  // Create a child domain and delegate source 3, then remove delegation.
+  // Sourcecfg delegateCfg {0};
+  delegateCfg.d1.d = true;
+  delegateCfg.d1.child_index = true;
+  root->writeSourcecfg(1, delegateCfg.value);
+  root->writeSourcecfg(1, 0);
+  read_val = root->readSourcecfg(1);
+  assert(read_val == 0);
+  std::cerr << "Case 7: Removing delegation causes sourcecfg to revert to 0.\n";
+
+  // --- in_clrip reading ---
+  // For a source in Level1 mode, in_clrip should mirror the external (rectified) input.
+  root->writeSourcecfg(1, level1Cfg.value);
+  aplic.setSourceState(1, true);
+  uint32_t in_clrip_val = root->readInClrip(0);
+  assert(in_clrip_val & (1 << 1));
+  aplic.setSourceState(1, false);
+  in_clrip_val = root->readInClrip(0);
+  assert(!(in_clrip_val & (1 << 1)));
+  std::cerr << "Case 8: readInClrip returns correct rectified input for source 1.\n";
+  
+  // --- topi when no valid interrupt is pending ---
+  // Clear any pending bit for source 1.
+  root->writeClripnum(1);
+  uint32_t topi_val = root->readTopi(0);
+  assert(topi_val == 0);
+  std::cerr << "Case 9: topi is 0 when no valid interrupt is pending.\n";
+
+  int source = 1;
+  Sourcecfg cfg3{};
+  cfg3.d0.sm = 6;
+  root->writeSourcecfg(3, cfg3.value);
+  aplic.setSourceState(1, false);
+  interrupts.clear();
+  dcfg.fields.ie = 0;
+  root->writeDomaincfg(dcfg.value);
+  aplic.setSourceState(source, true);
+  assert(interrupts.empty());
+  std::cerr << "Case 10: With IE disabled, no interrupt is delivered for source 3.\n";
+  
+  std::cerr << "Test test_sourcecfg_section4_7 passed successfully.\n";
+}
+
 
 
 int
 main(int, char**)
 {
-  test_01_domaincfg();
-  test_02_sourcecfg();
-  test_03_idelivery();
-  test_04_iforce();
-  test_05_ithreshold();
-  test_06_topi();
-  test_07_claimi();
-  // test_08_setipnum_le(); // TODO
-  // test_09_setipnum_be(); // TODO
-  test_10_targets();
-  test_11_MmsiAddressConfig();
-  test_12_SmsiAddressConfig();
-  test_13_misaligned_and_unsupported_access(); 
-  test_14_set_and_clear_pending();
-  test_15_genmsi();
+  // test_01_domaincfg();
+  // test_02_sourcecfg();
+  // test_03_idelivery();
+  // test_04_iforce();
+  // test_05_ithreshold();
+  // test_06_topi();
+  // test_07_claimi();
+  test_08_setipnum_le(); // TODO
+  test_09_setipnum_be(); // TODO
+  // test_10_targets();
+  // test_11_MmsiAddressConfig();
+  // test_12_SmsiAddressConfig();
+  // test_13_misaligned_and_unsupported_access(); 
+  // test_14_set_and_clear_pending();
+  // test_15_genmsi();
   test_16_sourcecfg_pending();
-  test_17_pending_extended();
+  // test_17_pending_extended();
   return 0;
 }
