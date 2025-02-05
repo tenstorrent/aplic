@@ -974,7 +974,7 @@ test_16_sourcecfg_pending()
   // Write a reserved SM value (e.g. 2) to source 1 and verify that the register is masked appropriately.
   root->writeSourcecfg(1, 2);
   uint32_t read_val = root->readSourcecfg(1);
-  // assert(read_val == 0);
+  assert(read_val == 0);
   
   // Test delegation removal: first set delegation, then remove it.
   Sourcecfg delegateCfg {0};
