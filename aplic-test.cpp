@@ -171,33 +171,38 @@ test_04_iforce()
   aplic.setSourceState(1, true); 
   std::cerr << "interrupts.size() " << interrupts.size() << "\n";
   std::cerr << "STATE " << interruptStateMap[0] << "\n";
-  assert((interrupts.size() == 2) && interruptStateMap[0]); // TODO
+  assert((interrupts.size() == 1) && interruptStateMap[0]); 
 
   root->writeIforce(0, 0);
   std::cerr << "Wrote 0x0 to iforce for valid hart.\n";
 
   aplic.setSourceState(1, true);
-  std::cerr << "interrupts.size() " << interrupts.size() << "\n";
-  std::cerr << "STATE " << interruptStateMap[0] << "\n"; 
-  // assert(interrupts.size() == 2 && !interruptStateMap[0]); // TODO
+  assert(interrupts.size() == 1 && interruptStateMap[0]);
+
+  root->writeClripnum(1);
+  uint32_t setip_value = root->readSetip(0);
+  assert((setip_value & (1<<1)) == 0);
 
   root->writeIforce(0, 1);
+  uint32_t topi_value = root->readTopi(0);
+  std::cerr << "Topi value: " << (topi_value >> 16) << " (priority: " << (topi_value & 0xFF) << ")\n";
   std::cerr << "Triggered spurious interrupt by setting iforce = 1.\n";
 
   uint32_t claimi_value = root->readClaimi(0);
-  std::cerr << "Claimi " << claimi_value << "\n"; 
-  //assert(claimi_value == 0); // TODO
+  // std::cerr << "Claimi " << claimi_value << "\n"; 
+  assert(claimi_value == 0); 
   std::cerr << "Claimi returned 0 after spurious interrupt.\n";
 
-  claimi_value = root->readIforce(0);
-  //assert(claimi_value == 0); // TODO
+  uint32_t iforce_value = root->readIforce(0);
+  assert(iforce_value == 0); 
   std::cerr << "Iforce cleared to 0 after reading claimi.\n";
 
   // Write 0x1 to iforce for a nonexistent hart
   // root->writeIforce(hartCount, 1); // TODO: this would cause an assertion; use aplic.write() instead
   std::cerr << "Wrote 0x1 to iforce for nonexistent hart.\n";
+  std::cerr << "SIZE " << interrupts.size() << "\n"; 
 
-  //assert(interrupts.size() == 6 && !interruptStateMap[0]); // No additional interrupts should be added // TODO
+  assert(interrupts.size() == 4 && !interruptStateMap[0]); // No additional interrupts should be added 
   std::cerr << "Test test_iforce passed successfully.\n";
 }
 
@@ -267,7 +272,7 @@ test_05_ithreshold() //INTERRUPT SIZE NOT UPDATING
   assert(interrupts.size() == 1); 
   std::cerr << "Verified only priority 0 interrupt is delivered when ithreshold = 0x1.\n";
 
-  // interrupts with priority <= 5 should be delivered
+  // interrupts with priority < 5 should be delivered
   root->writeIthreshold(0, 0x5);
   std::cerr << "Set ithreshold to 0x5.\n";
   root->writeSetip(0, (1 << 1) | (1 << 2) | (1 << 3)); 
@@ -277,8 +282,8 @@ test_05_ithreshold() //INTERRUPT SIZE NOT UPDATING
   interrupts.clear();
   aplic.setSourceState(1, true); // Priority 0, should be delivered 
   assert(interruptStateMap[0]);
-  aplic.setSourceState(2, true); // Priority 5, should be delivered 
-  assert(interruptStateMap[0]); 
+  aplic.setSourceState(2, true); // Priority 5, should NOT be delivered 
+  assert(!interruptStateMap[0]); 
   aplic.setSourceState(3, true); // Priority 7, should NOT be delivered 
   std::cerr << "SIZE: " << interrupts.size() << "\n";
   std::cerr << "STATE: " << interruptStateMap[0] << "\n"; 
@@ -904,7 +909,7 @@ void test_15_genmsi()
   root->writeGenmsi(0x12345678);
   read_genmsi = root->readGenmsi();
   std::cerr << "GENMSI: " << read_genmsi << "\n";
-  // assert(read_genmsi == 0); // TODO
+  assert(read_genmsi == 0); // TODO
   
   // If your model supports checking the busy bit, you could try writing again.
   // Here, we simply switch to direct delivery mode and confirm genmsi is read-only zero.
@@ -912,7 +917,8 @@ void test_15_genmsi()
   root->writeDomaincfg(dcfg.value);
   root->writeGenmsi(0x12345678);
   read_genmsi = root->readGenmsi();
-  assert(read_genmsi == 0);
+  std::cerr << "GENMSI: " << read_genmsi << "\n";
+  assert(read_genmsi == 0); // TODO
 
   std::cerr << "test_15_genmsi passed.\n";
 }
@@ -1065,8 +1071,8 @@ main(int, char**)
   // test_04_iforce();
   // test_05_ithreshold();
   // test_06_topi();
-  test_07_claimi();
-  // test_08_setipnum_le(); // TODO
+  // test_07_claimi();
+  test_08_setipnum_le(); // TODO
   // test_09_setipnum_be(); // TODO
   // test_10_targets();
   // test_11_MmsiAddressConfig();
