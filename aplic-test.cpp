@@ -46,8 +46,8 @@ test_01_domaincfg()
   assert(domaincfg == 0x80000104);
 
   root->writeDomaincfg(0xffffffff);
-  domaincfg = root->readDomaincfg();
-  //assert(domaincfg == 0x5010080); // TODO: big-endian does not work yet
+  aplic.read(addr, 4, domaincfg);
+  assert(domaincfg == 0x5010080);
 }
 
 void
