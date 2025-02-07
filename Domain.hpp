@@ -770,7 +770,7 @@ private:
 
     void setOrClearIeOrIpBit(bool ie, unsigned i, bool set)
     {
-        if (i >= 32)
+        if (i == 0 or i >= 1024)
             return;
         if (set and not sourceIsActive(i))
             return;
