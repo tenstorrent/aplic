@@ -770,6 +770,8 @@ private:
 
     void setOrClearIeOrIpBit(bool ie, unsigned i, bool set)
     {
+        if (i >= 32)
+            return;
         if (set and not sourceIsActive(i))
             return;
         auto& setix = ie ? setie_ : setip_;
