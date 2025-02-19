@@ -499,6 +499,8 @@ public:
 
 private:
     Domain(const Aplic *aplic, std::string_view name, std::shared_ptr<Domain> parent, uint64_t base, uint64_t size, Privilege privilege, std::span<const unsigned> hart_indices);
+    Domain(const Domain&) = delete;
+    Domain& operator=(const Domain&) = delete;
 
     bool use_be(uint64_t addr)
     {
