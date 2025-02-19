@@ -142,6 +142,7 @@ bool Domain::rectifiedInputValue(unsigned i) const
             return not state;
     }
     assert(false);
+    return false;
 }
 
 bool Domain::sourceIsImplemented(unsigned i) const
