@@ -34,12 +34,14 @@ test_01_domaincfg()
 {
   unsigned hartCount = 1;
   unsigned interruptCount = 1;
-  Aplic aplic(hartCount, interruptCount);
-
   uint64_t addr = 0x1000000;
   uint64_t domainSize = 32*1024;
-  unsigned hartIndices[] = {0};
-  auto root = aplic.createDomain("root", nullptr, addr, domainSize, Machine, hartIndices);
+  DomainParams domain_params[] = {
+      { "root", std::nullopt, 0, addr, domainSize, Machine, {0} },
+  };
+  Aplic aplic(hartCount, interruptCount, domain_params);
+
+  auto root = aplic.root();
 
   root->writeDomaincfg(0xfffffffe);
   uint32_t domaincfg = root->readDomaincfg();
@@ -55,13 +57,16 @@ test_02_sourcecfg()
 {
   unsigned hartCount = 1;
   unsigned interruptCount = 1;
-  Aplic aplic(hartCount, interruptCount);
-
   uint64_t addr = 0x1000000;
   uint64_t domainSize = 32*1024;
-  unsigned hartIndices[] = {0};
-  auto root = aplic.createDomain("root", nullptr, addr, domainSize, Machine, hartIndices);
-  auto child = aplic.createDomain("child", root, addr+domainSize, domainSize, Supervisor, hartIndices);
+  DomainParams domain_params[] = {
+      { "root",  std::nullopt, 0, addr,            domainSize, Machine,    {0} },
+      { "child", "root",       0, addr+domainSize, domainSize, Supervisor, {0} },
+  };
+  Aplic aplic(hartCount, interruptCount, domain_params);
+
+  auto root = aplic.root();
+  auto child = root->child(0);
 
   // For a system with N interrupt sources, write a non-zero value to a sourcecfg[i] where i > N; expect to read 0.
   root->writeSourcecfg(2, 0x1);
@@ -93,12 +98,14 @@ test_03_idelivery()
 {
   unsigned hartCount = 1;
   unsigned interruptCount = 1; 
-  Aplic aplic(hartCount, interruptCount);
-
   uint64_t addr = 0x1000000;
   uint64_t domainSize = 32 * 1024;
-  unsigned hartIndices[] = {0};
-  auto root = aplic.createDomain("root", nullptr, addr, domainSize, Machine, hartIndices);
+  DomainParams domain_params[] = {
+      { "root", std::nullopt, 0, addr, domainSize, Machine, {0} },
+  };
+  Aplic aplic(hartCount, interruptCount, domain_params);
+
+  auto root = aplic.root();
   aplic.setDirectCallback(directCallback);
 
   Domaincfg dcfg{};
@@ -139,12 +146,14 @@ test_04_iforce()
 {
   unsigned hartCount = 2; 
   unsigned interruptCount = 1;
-  Aplic aplic(hartCount, interruptCount);
-
   uint64_t addr = 0x1000000;
   uint64_t domainSize = 32 * 1024;
-  unsigned hartIndices[] = {0};
-  auto root = aplic.createDomain("root", nullptr, addr, domainSize, Machine, hartIndices);
+  DomainParams domain_params[] = {
+      { "root", std::nullopt, 0, addr, domainSize, Machine, {0} },
+  };
+  Aplic aplic(hartCount, interruptCount, domain_params);
+
+  auto root = aplic.root();
   aplic.setDirectCallback(directCallback);
 
   Domaincfg dcfg{};
@@ -208,12 +217,14 @@ void test_05_ithreshold()
 {
   unsigned hartCount = 1;
   unsigned interruptCount = 3;
-  Aplic aplic(hartCount, interruptCount);
-
   uint64_t addr = 0x1000000;
   uint64_t domainSize = 32 * 1024;
-  unsigned hartIndices[] = {0};
-  auto root = aplic.createDomain("root", nullptr, addr, domainSize, Machine, hartIndices);
+  DomainParams domain_params[] = {
+      { "root", std::nullopt, 0, addr, domainSize, Machine, {0} },
+  };
+  Aplic aplic(hartCount, interruptCount, domain_params);
+
+  auto root = aplic.root();
   aplic.setDirectCallback(directCallback);
 
   Domaincfg dcfg{};
@@ -315,12 +326,14 @@ test_06_topi()
 {
   unsigned hartCount = 1;
   unsigned interruptCount = 7; 
-  Aplic aplic(hartCount, interruptCount);
-
   uint64_t addr = 0x1000000;
   uint64_t domainSize = 32 * 1024;
-  unsigned hartIndices[] = {0};
-  auto root = aplic.createDomain("root", nullptr, addr, domainSize, Machine, hartIndices);
+  DomainParams domain_params[] = {
+      { "root", std::nullopt, 0, addr, domainSize, Machine, {0} },
+  };
+  Aplic aplic(hartCount, interruptCount, domain_params);
+
+  auto root = aplic.root();
 
   Domaincfg dcfg{};
   dcfg.fields.dm = 0; 
@@ -391,13 +404,14 @@ test_07_claimi()
 {
   unsigned hartCount = 1;
   unsigned interruptCount = 3; 
-  Aplic aplic(hartCount, interruptCount);
-
-
   uint64_t addr = 0x1000000;
   uint64_t domainSize = 32 * 1024;
-  unsigned hartIndices[] = {0};
-  auto root = aplic.createDomain("root", nullptr, addr, domainSize, Machine, hartIndices);
+  DomainParams domain_params[] = {
+      { "root", std::nullopt, 0, addr, domainSize, Machine, {0} },
+  };
+  Aplic aplic(hartCount, interruptCount, domain_params);
+
+  auto root = aplic.root();
   aplic.setDirectCallback(directCallback);
 
   Domaincfg dcfg{};
@@ -454,15 +468,15 @@ test_08_setipnum_le()
 {
   unsigned hartCount = 1;
   unsigned interruptCount = 10; 
-  Aplic aplic(hartCount, interruptCount);
-
-
   uint64_t addr = 0x1000000;
   uint64_t domainSize = 32 * 1024;
-  unsigned hartIndices[] = {0};
-  auto root = aplic.createDomain("root", nullptr, addr, domainSize, Machine, hartIndices);
-  aplic.setDirectCallback(directCallback);
+  DomainParams domain_params[] = {
+      { "root", std::nullopt, 0, addr, domainSize, Machine, {0} },
+  };
+  Aplic aplic(hartCount, interruptCount, domain_params);
 
+  auto root = aplic.root();
+  aplic.setDirectCallback(directCallback);
 
   Domaincfg dcfg{};
   dcfg.fields.dm = 0;
@@ -510,14 +524,14 @@ test_09_setipnum_be()
 {
   unsigned hartCount = 1;
   unsigned interruptCount = 10; 
-  Aplic aplic(hartCount, interruptCount);
-
-
   uint64_t addr = 0x1000000;
   uint64_t domainSize = 32 * 1024;
-  unsigned hartIndices[] = {0};
-  auto root = aplic.createDomain("root", nullptr, addr, domainSize, Machine, hartIndices);
+  DomainParams domain_params[] = {
+      { "root", std::nullopt, 0, addr, domainSize, Machine, {0} },
+  };
+  Aplic aplic(hartCount, interruptCount, domain_params);
 
+  auto root = aplic.root();
 
   Domaincfg dcfg{};
   dcfg.fields.dm = 0;
@@ -563,12 +577,14 @@ test_10_targets()
 {
   unsigned hartCount = 4;  // Multiple harts to validate configurations
   unsigned interruptCount = 1023; 
-  Aplic aplic(hartCount, interruptCount);
-
   uint64_t addr = 0x1000000;
   uint64_t domainSize = 32 * 1024;
-  unsigned hartIndices[] = {0, 1, 2, 3};
-  auto root = aplic.createDomain("root", nullptr, addr, domainSize, Machine, hartIndices);
+  DomainParams domain_params[] = {
+      { "root", std::nullopt, 0, addr, domainSize, Machine, {0, 1, 2, 3} },
+  };
+  Aplic aplic(hartCount, interruptCount, domain_params);
+
+  auto root = aplic.root();
 
   // MSI delivery mode
   Domaincfg dcfg{};
@@ -638,15 +654,17 @@ test_11_MmsiAddressConfig()
   unsigned interruptCount = 33;
   uint64_t addr = 0x1000000;
   uint64_t domainSize = 32 * 1024;
-  Aplic aplic(hartCount, interruptCount);
+  DomainParams domain_params[] = {
+      { "root",  std::nullopt, 0, addr,              domainSize, Machine,    {0, 1} },
+      { "child", "root",       0, addr + domainSize, domainSize, Supervisor, {0, 1} },
+  };
+  Aplic aplic(hartCount, interruptCount, domain_params);
 
   aplic.setDirectCallback(directCallback);
   aplic.setMsiCallback(imsicCallback);
 
-  // Create root and child domains
-  unsigned hartIndices[] = {0, 1};
-  auto root = aplic.createDomain("root", nullptr, addr, domainSize, Machine, hartIndices);
-  auto child = aplic.createDomain("child", root, addr + domainSize, domainSize, Supervisor, hartIndices);
+  auto root = aplic.root();
+  auto child = root->child(0);
 
   // Enable MSI delivery mode in root
   Domaincfg dcfg{};
@@ -742,13 +760,16 @@ test_12_SmsiAddressConfig()
 {
   unsigned hartCount = 2;  
   unsigned interruptCount = 1;
-  Aplic aplic(hartCount, interruptCount);
-
   uint64_t addr = 0x1000000;
   uint64_t domainSize = 32 * 1024;
-  unsigned hartIndices[] = {0, 1};
-  auto root = aplic.createDomain("root", nullptr, addr, domainSize, Machine, hartIndices);
-  auto child = aplic.createDomain("child", root, addr + domainSize, domainSize, Supervisor, hartIndices);
+  DomainParams domain_params[] = {
+      { "root",  std::nullopt, 0, addr,              domainSize, Machine,    {0, 1} },
+      { "child", "root",       0, addr + domainSize, domainSize, Supervisor, {0, 1} },
+  };
+  Aplic aplic(hartCount, interruptCount, domain_params);
+
+  auto root = aplic.root();
+  auto child = root->child(0);
 
   uint32_t base_ppn = 0x234;  // 12-bit PPN
   uint32_t lhxs = 0b101;      // 3-bit field
@@ -794,11 +815,13 @@ void test_13_misaligned_and_unsupported_access()
 {
   std::cerr << "\nRunning test_13_misaligned_and_unsupported_access...\n";
   unsigned hartCount = 1, interruptCount = 4;
-  Aplic aplic(hartCount, interruptCount);
-  
   uint64_t addr = 0x1000000, domainSize = 32 * 1024;
-  unsigned hartIndices[] = {0};
-  auto root = aplic.createDomain("root", nullptr, addr, domainSize, Machine, hartIndices);
+  DomainParams domain_params[] = {
+      { "root", std::nullopt, 0, addr, domainSize, Machine, {0} },
+  };
+  Aplic aplic(hartCount, interruptCount, domain_params);
+
+  auto root = aplic.root();
   
   aplic.write(addr, 2, 0x1234);
   uint32_t domaincfg_value = 0;
@@ -829,12 +852,14 @@ void test_14_set_and_clear_pending()
 {
   unsigned hartCount = 1;
   unsigned interruptCount = 5;
-  Aplic aplic(hartCount, interruptCount);
-  
   uint64_t addr = 0x1000000;
   uint64_t domainSize = 32 * 1024;
-  unsigned hartIndices[] = {0};
-  auto root = aplic.createDomain("root", nullptr, addr, domainSize, Machine, hartIndices);
+  DomainParams domain_params[] = {
+      { "root", std::nullopt, 0, addr, domainSize, Machine, {0} },
+  };
+  Aplic aplic(hartCount, interruptCount, domain_params);
+
+  auto root = aplic.root();
   
   Domaincfg dcfg{};
   dcfg.fields.dm = 0;
@@ -866,12 +891,14 @@ void test_15_genmsi()
 {
   unsigned hartCount = 1;
   unsigned interruptCount = 1;
-  Aplic aplic(hartCount, interruptCount);
-  
   uint64_t addr = 0x1000000;
   uint64_t domainSize = 32 * 1024;
-  unsigned hartIndices[] = {0};
-  auto root = aplic.createDomain("root", nullptr, addr, domainSize, Machine, hartIndices);
+  DomainParams domain_params[] = {
+      { "root", std::nullopt, 0, addr, domainSize, Machine, {0} },
+  };
+  Aplic aplic(hartCount, interruptCount, domain_params);
+
+  auto root = aplic.root();
   
   // Configure for MSI mode.
   Domaincfg dcfg{};
@@ -909,13 +936,16 @@ test_16_sourcecfg_pending()
   std::cerr << "\nRunning test_16_sourcecfg_pending...\n";
   {
     unsigned hartCount = 1, interruptCount = 1;
-    Aplic aplic(hartCount, interruptCount);
-    aplic.setDirectCallback(directCallback);
-    
     uint64_t addr = 0x1000000;
     uint64_t domainSize = 32 * 1024;
-    unsigned hartIndices[] = {0};
-    auto root = aplic.createDomain("root", nullptr, addr, domainSize, Machine, hartIndices);
+    DomainParams domain_params[] = {
+        { "root",  std::nullopt, 0, addr,            domainSize, Machine,    {0} },
+        { "child", "root",       0, addr+domainSize, domainSize, Supervisor, {0} },
+    };
+    Aplic aplic(hartCount, interruptCount, domain_params);
+    aplic.setDirectCallback(directCallback);
+
+    auto root = aplic.root();
     
     // Set domain configuration: direct delivery and IE enabled.
     Domaincfg dcfg{};
@@ -928,7 +958,7 @@ test_16_sourcecfg_pending()
     uint32_t csr_value = root->readSourcecfg(2);
     assert(csr_value == 0);
     
-    auto child = aplic.createDomain("child", root, addr+domainSize, domainSize, Supervisor, hartIndices);
+    auto child = root->child(0);
     child->writeSourcecfg(1, 0x1);
     csr_value = child->readSourcecfg(1);
     assert(csr_value == 0);
@@ -1194,15 +1224,17 @@ test_16_sourcecfg_pending()
   {
     std::cerr << "[MSI Delivery Mode]\n";
     unsigned hartCount = 1, interruptCount = 1;
-    Aplic aplic(hartCount, interruptCount);
+    uint64_t addr = 0x2000000;  // Use a different base for clarity.
+    uint64_t domainSize = 32 * 1024;
+    DomainParams domain_params[] = {
+        { "root", std::nullopt, 0, addr, domainSize, Machine, {0} },
+    };
+    Aplic aplic(hartCount, interruptCount, domain_params);
     aplic.setDirectCallback(directCallback);
     // For MSI mode, we also need an MSI callback:
     aplic.setMsiCallback(imsicCallback);
 
-    uint64_t addr = 0x2000000;  // Use a different base for clarity.
-    uint64_t domainSize = 32 * 1024;
-    unsigned hartIndices[] = {0};
-    auto root = aplic.createDomain("root", nullptr, addr, domainSize, Machine, hartIndices);
+    auto root = aplic.root();
 
     // Set domain configuration: DM = 1, IE = 1.
     Domaincfg dcfg{};
@@ -1301,11 +1333,13 @@ test_16_sourcecfg_pending()
 void test_17_pending_extended()
 {
   unsigned hartCount = 1, interruptCount = 5;
-  Aplic aplic(hartCount, interruptCount);
-  
   uint64_t addr = 0x1000000, domainSize = 32 * 1024;
-  unsigned hartIndices[] = {0};
-  auto root = aplic.createDomain("root", nullptr, addr, domainSize, Machine, hartIndices);
+  DomainParams domain_params[] = {
+      { "root", std::nullopt, 0, addr, domainSize, Machine, {0} },
+  };
+  Aplic aplic(hartCount, interruptCount, domain_params);
+
+  auto root = aplic.root();
   
   Domaincfg dcfg {0};
   dcfg.fields.dm = 0;

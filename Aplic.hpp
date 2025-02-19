@@ -3,6 +3,7 @@
 #include <string>
 #include <span>
 #include <vector>
+#include <optional>
 #include <memory>
 #include <cassert>
 
@@ -10,29 +11,24 @@
 
 namespace TT_APLIC {
 
+struct DomainParams {
+    std::string name;
+    std::optional<std::string> parent;
+    std::optional<size_t> child_index;
+    uint64_t base;
+    uint64_t size;
+    Privilege privilege;
+    std::vector<unsigned> hart_indices;
+};
+
 class Aplic
 {
 public:
-    Aplic(unsigned num_harts, unsigned num_sources)
-        : num_harts_(num_harts), num_sources_(num_sources)
-    {
-        assert(num_harts <= 16384);
-        assert(num_sources < 1024);
-        source_states_.resize(num_sources_ + 1);
-    }
+    Aplic(unsigned num_harts, unsigned num_sources, std::span<const DomainParams> domain_params_list);
 
     std::shared_ptr<Domain> root() const { return root_; }
     unsigned numHarts() const { return num_harts_; }
     unsigned numSources() const { return num_sources_; }
-
-    std::shared_ptr<Domain> createDomain(
-        const std::string& name,
-        std::shared_ptr<Domain> parent,
-        uint64_t base,
-        uint64_t size,
-        Privilege privilege,
-        std::span<const unsigned> hart_indices
-    );
 
     std::shared_ptr<Domain> findDomainByName(std::string_view name) const;
 
@@ -59,6 +55,15 @@ public:
     bool autoForwardViaMsi = true;
 
 private:
+    std::shared_ptr<Domain> createDomain(
+        const std::string& name,
+        std::shared_ptr<Domain> parent,
+        uint64_t base,
+        uint64_t size,
+        Privilege privilege,
+        std::span<const unsigned> hart_indices
+    );
+
     unsigned num_harts_;
     unsigned num_sources_;
     std::shared_ptr<Domain> root_;

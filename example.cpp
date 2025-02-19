@@ -22,16 +22,6 @@ main(int, char**)
     return true;
   };
 
-  unsigned hartCount = 2;
-  unsigned interruptCount = 33;
-
-  uint64_t addr = 0x1000000;
-  uint64_t domainSize = 32*1024;
-  Aplic aplic(hartCount, interruptCount);
-
-  aplic.setDirectCallback(callback);
-  aplic.setMsiCallback(imsicFunc);
-
   // In this example, the domain configuration will be:
   // root (machine, MSI), harts: 0
   //  --> child (supervisor, direct), harts: 0
@@ -42,13 +32,28 @@ main(int, char**)
   // source2: active in root    ; source mode of Level1 ; target hart 1
   // source3: active in child3  ; source mode of Edge0  ; target hart 1
 
-  // Create root and child domains.
-  unsigned hartIndices0[] = {0};
-  unsigned hartIndices1[] = {1};
-  auto root = aplic.createDomain("root", nullptr, addr, domainSize, Machine, hartIndices0);
-  auto child = aplic.createDomain("child", root, addr + domainSize, domainSize, Supervisor, hartIndices0);
-  auto child2 = aplic.createDomain("child2", root, addr + 2*domainSize, domainSize, Machine, hartIndices1);
-  auto child3 = aplic.createDomain("child3", child2, addr + 3*domainSize, domainSize, Supervisor, hartIndices1);
+  unsigned hartCount = 2;
+  unsigned interruptCount = 33;
+
+  uint64_t addr = 0x1000000;
+  uint64_t domainSize = 32*1024;
+
+  DomainParams domain_params[] = {
+      { "root",   std::nullopt, 0, addr,                domainSize, Machine,    {0} },
+      { "child",  "root",       0, addr + domainSize,   domainSize, Supervisor, {0} },
+      { "child2", "root",       1, addr + 2*domainSize, domainSize, Machine,    {1} },
+      { "child3", "child2",     0, addr + 3*domainSize, domainSize, Supervisor, {1} },
+  };
+
+  Aplic aplic(hartCount, interruptCount, domain_params);
+
+  auto root = aplic.root();
+  auto child = root->child(0);
+  auto child2 = root->child(1);
+  auto child3 = child2->child(0);
+
+  aplic.setDirectCallback(callback);
+  aplic.setMsiCallback(imsicFunc);
 
   // Aplic creation done. Test APIs.
 

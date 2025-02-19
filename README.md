@@ -21,17 +21,15 @@ direct delivery or MSI delivery.
 
 Here's an overview of the usage of the `Aplic` class:
 
-1. Instantiate an `Aplic` with a hart count and an interrupt source count.
+1. Instantiate an `Aplic` with a hart count, an interrupt source count, and the
+   parameters for each of the domains within the APLIC.
 
 2. Define the direct delivery callback or the MSI delivery callback or both.
 
-3. Define the domains of the APLIC starting with the root domain and
-   associating all other domains with a parent domain.
-
-4. Invoke the `read` and `write` methods whenever there is a load or store
+3. Invoke the `read` and `write` methods whenever there is a load or store
    operation to an address within any of the APLIC's domain control regions.
 
-5. Invoke the `setSourceState` method whenever there is a change in the state
+4. Invoke the `setSourceState` method whenever there is a change in the state
    of an interrupt source associated with the APLIC.
 
 ## Compiling
@@ -42,21 +40,61 @@ To compile, issue the command:
 make
 ```
 
+To compile with debug symbols, use:
+```
+make OFLAGS=-g
+```
+
 ## Instantiating an Aplic
 
-The `Aplic` constructor requires the number of controlled harts (1 to 16,384)
-and the number of interrupt sources (1 to 1023). If the interrupt source count
-is `N`, then the interrupt source IDs will be 1 to `N`.
+The `Aplic` constructor requires:
+
+- The number of controlled harts (1 to 16,384)
+- The number of interrupt sources (1 to 1023)
+- The parameters for each of the interrupt domains belonging to the APLIC
+
+The parameters for each interrupt domain are specified using the `DomainParams`
+type. The constructor is provided with a list (`std::array`, `std::vector`, or
+C-style array) of `DomainParams`, one for each domain. The items in this list
+may be in any order. For more information about domain parameters, see the
+"Domain Parameters" section.
+
+Note that if the interrupt source count is `N`, then the interrupt source IDs
+will be 1 to `N`.
+
+If an `Aplic` cannot be instantiated, it will throw an exception with a
+diagnostic message.
+
+Once an `Aplic` has been instantiated, shared pointers to the domains can be
+obtained by name using `findDomainByName` or by address using
+`findDomainByAddr`. Alternatively, a pointer to the root domain can be obtained
+using the `root` method and children of a domain can be obtained using the
+`child` method.
 
 Example:
 ```
-#include <Aplic.hpp>
+#include "Aplic.hpp"
 
 int main()
 {
     unsigned num_harts = 2;
     unsigned num_sources = 32;
-    TT_APLIC::Aplic aplic(num_harts, num_sources);
+    uint64_t addr = 0x1000000;
+    uint64_t domainSize = 32*1024;
+    TT_APLIC::DomainParams domain_params[] = {
+        // name     parent name   child index  address              size        privilege             hart indices
+        // -------  ------------  -----------  -------------------  ----------  --------------------  ------------
+        { "root",   std::nullopt, 0,           addr,                domainSize, TT_APLIC::Machine,    {0}          },
+        { "child",  "root",       0,           addr + domainSize,   domainSize, TT_APLIC::Supervisor, {0}          },
+        { "child2", "root",       1,           addr + 2*domainSize, domainSize, TT_APLIC::Machine,    {1}          },
+        { "child3", "child2",     0,           addr + 3*domainSize, domainSize, TT_APLIC::Supervisor, {1}          },
+    };
+    TT_APLIC::Aplic aplic(num_harts, num_sources, domain_params);
+
+    auto root = aplic.root();
+    auto child = root->child(0);
+    auto child2 = root->child(1);
+    auto child3 = child2->child(0);
 }
 ```
 
@@ -83,17 +121,27 @@ bool msi_callback(uint64_t addr, uint32_t data) {
 }
 ```
 
-## Instantiating Domains
+### Domain Parameters
 
-A domain is added to an `Aplic` instance using the `createDomain` method.
+The parameters for an interrupt domain are specified using the `DomainParams`
+type and consists of the following:
 
-The `name` parameter allows for assigning a meaningful label to the domain,
-which can be useful for logging and debugging. If unique names are used, it
-also allows for retrieving domains via the `findDomainByName` method.
+- The name of the domain
+- The name of the domain's parent (if any)
+- The child index of the domain
+- The base address of the domain's control region
+- The size of the domain's control region
+- The privilege level of the domain
+- The hart indices which belong to the domain
 
-The `parent` parameter designates which existing domain is the parent of the
-domain being created (thus, parent domains must be created before their
-children). When creating the root domain, pass `nullptr`.
+Each domain must be given a unique name. Non-root domains identify their parent
+by name. The root domain, having no parent, must use a value of `std::nullopt`.
+
+Domains which are siblings of each other (i.e. have the same parent) use the
+`child_index` parameter to indicate their order with respect to each other.
+This parameter corresponds to the child index field of the `sourcecfg` CSR when
+a source is delegated. Values must be contiguous starting at 0. The child index
+parameter is ignored for the root domain.
 
 The `base` and `size` paramters specify the region of memory occupied by the
 domain's control region. This region is subject to the following constraints:
@@ -115,27 +163,6 @@ the genmsi CSR in the case of MSI delivery mode. As per the spec, a hart may
 only belong to one domain at each privilege level, and any harts which belong
 to a supervisor-level domain must also belong to its machine-level parent
 domain.
-
-Upon success, `createDomain` will return a pointer to the newly created domain.
-This pointer can be passed to subsequent calls of `createDomain` via the
-`parent` parameter to construct a domain hierarchy.
-
-Note that the order in which child domains are created is significant. The
-`sourcecfg` CSRs contain a "child index" field which designates which child
-domain to delegate an interrupt source to. The value of this field corresponds
-to the order in which child domains are created for a given parent.
-
-If `createDomain` is unable to instantiate a domain, it will throw an exception
-with a diagnostic message.
-
-Example:
-```
-uint64_t base = 0x1000000;
-uint64_t size = 0x8000;
-unsigned hart_indices[] = {0, 1, 2, 3};
-auto root = aplic.createDomain("root", nullptr, base, size, TT_APLIC::Machine, hart_indices);
-auto child = aplic.createDomain("child", root, base+size, size, TT_APLIC::Supervisor, hart_indices);
-```
 
 ## Accessing Domain CSRs
 

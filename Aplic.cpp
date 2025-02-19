@@ -1,6 +1,51 @@
 #include "Aplic.hpp"
+#include <unordered_set>
 
 using namespace TT_APLIC;
+
+Aplic::Aplic(unsigned num_harts, unsigned num_sources, std::span<const DomainParams> domain_params_list)
+    : num_harts_(num_harts), num_sources_(num_sources)
+{
+    if (num_harts > 16384)
+        throw std::runtime_error("APLIC cannot have more than 16384 harts\n");
+    if (num_sources > 1023)
+        throw std::runtime_error("APLIC cannot have more than 1023 sources\n");
+    source_states_.resize(num_sources_ + 1);
+
+    std::unordered_set<std::string> uniq_names;
+    for (const auto& domain_params : domain_params_list) {
+        if (uniq_names.contains(domain_params.name))
+            throw std::runtime_error("domain name '" + domain_params.name + "' used more than once\n");
+        uniq_names.insert(domain_params.name);
+    }
+
+    while (domains_.size() < domain_params_list.size()) {
+        bool made_progress = false;
+        for (const auto& domain_params : domain_params_list) {
+            if (findDomainByName(domain_params.name) != nullptr)
+                continue; // already created this domain
+            std::shared_ptr<Domain> parent = nullptr;
+            if (domain_params.parent.has_value()) {
+                parent = findDomainByName(domain_params.parent.value());
+                if (parent == nullptr)
+                    continue; // parent has not been created yet
+            }
+            size_t child_index = domain_params.child_index.value_or(0);
+            if (parent and parent->numChildren() < child_index)
+                continue; // haven't reached this child index yet
+            if (parent and parent->numChildren() > child_index)
+                throw std::runtime_error("domain '" + domain_params.name + "' reuses child index " + std::to_string(child_index) + "\n");
+            if (parent == nullptr and domain_params.privilege != Machine)
+                throw std::runtime_error("root APLIC domain must be machine mode\n");
+            if (parent and parent->privilege() != Machine)
+                throw std::runtime_error("domain '" + domain_params.name + "' has a parent domain without machine privilege\n");
+            createDomain(domain_params.name, parent, domain_params.base, domain_params.size, domain_params.privilege, domain_params.hart_indices);
+            made_progress = true;
+        }
+        if (not made_progress)
+            throw std::runtime_error("invalid domain hierarchy; possible cycle in graph\n");
+    }
+}
 
 std::shared_ptr<Domain> Aplic::createDomain(
     const std::string& name,
@@ -38,6 +83,9 @@ std::shared_ptr<Domain> Aplic::createDomain(
 
     if (hart_indices.size() == 0)
         throw std::runtime_error("domain '" + name + "' must have at least one hart\n");
+
+    if (findDomainByName(name) != nullptr)
+        throw std::runtime_error("domain with name '" + name + "' already exists\n");
 
     for (auto domain : domains_) {
         if (domain->privilege_ != privilege)
