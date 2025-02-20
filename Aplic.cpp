@@ -35,11 +35,7 @@ Aplic::Aplic(unsigned num_harts, unsigned num_sources, std::span<const DomainPar
                 continue; // haven't reached this child index yet
             if (parent and parent->numChildren() > child_index)
                 throw std::runtime_error("domain '" + domain_params.name + "' reuses child index " + std::to_string(child_index) + "\n");
-            if (parent == nullptr and domain_params.privilege != Machine)
-                throw std::runtime_error("root APLIC domain must be machine mode\n");
-            if (parent and parent->privilege() != Machine)
-                throw std::runtime_error("domain '" + domain_params.name + "' has a parent domain without machine privilege\n");
-            createDomain(domain_params.name, parent, domain_params.base, domain_params.size, domain_params.privilege, domain_params.hart_indices);
+            createDomain(domain_params);
             made_progress = true;
         }
         if (not made_progress)
@@ -47,75 +43,74 @@ Aplic::Aplic(unsigned num_harts, unsigned num_sources, std::span<const DomainPar
     }
 }
 
-std::shared_ptr<Domain> Aplic::createDomain(
-    const std::string& name,
-    std::shared_ptr<Domain> parent,
-    uint64_t base,
-    uint64_t size,
-    Privilege privilege,
-    std::span<const unsigned> hart_indices
-) {
-    if (base % 0x1000 != 0)
-        throw std::runtime_error("base address of domain '" + name + "' (" + std::to_string(base) + ") is not aligned to 4KiB\n");
+std::shared_ptr<Domain> Aplic::createDomain(const DomainParams& params)
+{
+    if (params.base % 0x1000 != 0)
+        throw std::runtime_error("base address of domain '" + params.name + "' (" + std::to_string(params.base) + ") is not aligned to 4KiB\n");
 
-    if (size < 0x4000)
-        throw std::runtime_error("size of domain '" + name + "' (" + std::to_string(size) + ") is less than minimum of 16KiB\n");
+    if (params.size < 0x4000)
+        throw std::runtime_error("size of domain '" + params.name + "' (" + std::to_string(params.size) + ") is less than minimum of 16KiB\n");
 
-    if (size % 4096 != 0)
-        throw std::runtime_error("size of domain '" + name + "' (" + std::to_string(size) + ") is not aligned to 4KiB\n");
+    if (params.size % 4096 != 0)
+        throw std::runtime_error("size of domain '" + params.name + "' (" + std::to_string(params.size) + ") is not aligned to 4KiB\n");
 
     for (auto domain : domains_) {
-        if (domain->overlaps(base, size))
-            throw std::runtime_error("control regions for domains '" + name + "' and '" + domain->name_ + "' overlap\n");
+        if (domain->overlaps(params.base, params.size))
+            throw std::runtime_error("control regions for domains '" + params.name + "' and '" + domain->name_ + "' overlap\n");
     }
+
+    if (not params.direct_mode_supported and not params.msi_mode_supported)
+        throw std::runtime_error("domain '" + params.name + "' must support at least one delivery mode\n");
+
+    if (not params.le_supported and not params.be_supported)
+        throw std::runtime_error("domain '" + params.name + "' must support at least one endianness\n");
+
+    std::shared_ptr<Domain> parent = nullptr;
+    if (params.parent.has_value())
+        parent = findDomainByName(params.parent.value());
 
     if (not root_ and parent)
         throw std::runtime_error("first domain created must be root\n");
 
-    if (not parent and privilege != Machine)
+    if (not parent and params.privilege != Machine)
         throw std::runtime_error("root domain must be machine-level\n");
 
-    if (privilege == Supervisor and parent->privilege_ == Supervisor)
-        throw std::runtime_error("parent of supervisor-level domain must be machine-level\n");
+    if (parent and parent->privilege_ == Supervisor)
+        throw std::runtime_error("domain '" + params.name + "' has a parent domain without machine privilege\n");
 
     if (root_ and not parent)
         throw std::runtime_error("cannot have more than one root domain\n");
 
-    if (hart_indices.size() == 0)
-        throw std::runtime_error("domain '" + name + "' must have at least one hart\n");
-
-    if (findDomainByName(name) != nullptr)
-        throw std::runtime_error("domain with name '" + name + "' already exists\n");
+    if (findDomainByName(params.name) != nullptr)
+        throw std::runtime_error("domain with name '" + params.name + "' already exists\n");
 
     for (auto domain : domains_) {
-        if (domain->privilege_ != privilege)
+        if (domain->privilege_ != params.privilege)
             continue;
-        for (unsigned i : hart_indices) {
-            auto it = std::find(domain->hart_indices_.begin(), domain->hart_indices_.end(), i);
-            if (it != domain->hart_indices_.end()) {
-                std::string priv_str = privilege == Machine ? "machine" : "supervisor";
-                std::string msg = "hart " + std::to_string(i) + " belongs to multiple " + priv_str + "-level domains: '" + name + "' and '" + domain->name_ + "'\n";
+        for (unsigned i : params.hart_indices) {
+            if (domain->includesHart(i)) {
+                std::string priv_str = params.privilege == Machine ? "machine" : "supervisor";
+                std::string msg = "hart " + std::to_string(i) + " belongs to multiple " + priv_str + "-level domains: '" + params.name + "' and '" + domain->name_ + "'\n";
                 throw std::runtime_error(msg);
             }
         }
     }
-    for (unsigned i : hart_indices) {
+    for (unsigned i : params.hart_indices) {
         if (i >= num_harts_) {
-            std::string msg = "for domain '" + name + "', hart index " + std::to_string(i) + " must be less than number of harts, " + std::to_string(num_harts_) + "\n";
+            std::string msg = "for domain '" + params.name + "', hart index " + std::to_string(i) + " must be less than number of harts, " + std::to_string(num_harts_) + "\n";
             throw std::runtime_error(msg);
         }
     }
-    if (privilege == Supervisor) {
-        for (unsigned i : hart_indices) {
-            auto it = std::find(parent->hart_indices_.begin(), parent->hart_indices_.end(), i);
-            if (it == parent->hart_indices_.end()) {
-                std::string msg = "hart " + std::to_string(i) + " belongs to supervisor-level domain '" + name + "' but not to its machine-level parent domain, '" + parent->name_ + "'\n";
+    if (params.privilege == Supervisor) {
+        for (unsigned i : params.hart_indices) {
+            if (not parent->includesHart(i)) {
+                std::string msg = "hart " + std::to_string(i) + " belongs to supervisor-level domain '" + params.name + "' but not to its machine-level parent domain, '" + parent->name_ + "'\n";
                 throw std::runtime_error(msg);
             }
         }
     }
 
-    auto domain = std::shared_ptr<Domain>(new Domain(this, name, parent, base, size, privilege, hart_indices));
+    auto domain = std::shared_ptr<Domain>(new Domain(this, parent, params));
     if (parent)
         parent->children_.push_back(domain);
     if (!root_)

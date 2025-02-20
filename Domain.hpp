@@ -69,18 +69,15 @@ union Smsiaddrcfgh {
 union Target {
     uint32_t value = 0;
 
-    void legalize(Privilege privilege, DeliveryMode dm, std::span<const unsigned> hart_indices) {
-        assert(hart_indices.size() > 0);
-        if (std::find(hart_indices.begin(), hart_indices.end(), dm0.hart_index) == hart_indices.end())
-            dm0.hart_index = hart_indices[0];
+    void legalize(Privilege privilege, DeliveryMode dm, unsigned ipriolen, unsigned eiidlen) {
         if (dm == Direct) {
-            // TODO: only set bits IPRIOLEN-1:0 for iprio
             value &= 0b1111'1111'1111'1100'0000'0000'1111'1111;
+            dm0.iprio &= (1 << ipriolen) - 1;
             if (dm0.iprio == 0)
                 dm0.iprio = 1;
         } else {
-            // TODO: add GEILEN parameter? add parameter for width of EIID?
             value &= 0b1111'1111'1111'1111'1111'0111'1111'1111;
+            dm1.eiid &= (1 << eiidlen) - 1;
             if (privilege == Machine)
               dm1.guest_index = 0;
         }
@@ -126,9 +123,13 @@ struct Idc {
 union Domaincfg {
     uint32_t value = 0x80000000;
 
-    void legalize() {
+    void legalize(bool dm0_ok, bool dm1_ok, bool be0_ok, bool be1_ok) {
         value &= 0x00000105;
         value |= 0x80000000;
+        if (!dm0_ok) value |= 4;
+        if (!dm1_ok) value &= ~4;
+        if (!be0_ok) value |= 1;
+        if (!be1_ok) value &= ~1;
     }
 
     struct {
@@ -179,8 +180,9 @@ union Sourcecfg {
 union Genmsi {
     uint32_t value = 0;
 
-    void legalize() {
+    void legalize(unsigned eiidlen) {
         value &= 0b1111'1111'1111'1100'0001'0111'1111'1111;
+        fields.eiid &= (1 << eiidlen) - 1;
     }
 
     struct {
@@ -193,6 +195,22 @@ union Genmsi {
 };
 
 class Aplic;
+
+struct DomainParams {
+    std::string name;
+    std::optional<std::string> parent;
+    std::optional<size_t> child_index;
+    uint64_t base;
+    uint64_t size;
+    Privilege privilege;
+    std::vector<unsigned> hart_indices {};
+    unsigned ipriolen = 8;
+    unsigned eiidlen = 11;
+    bool direct_mode_supported = true;
+    bool msi_mode_supported = true;
+    bool le_supported = true;
+    bool be_supported = true;
+};
 
 class Domain
 {
@@ -208,6 +226,9 @@ public:
     uint64_t size() const { return size_; }
     Privilege privilege() const { return privilege_; }
     std::span<const unsigned> hartIndices() const { return hart_indices_; }
+    bool includesHart(unsigned hart_index) const {
+        return std::find(hart_indices_.begin(), hart_indices_.end(), hart_index) != hart_indices_.end();
+    }
 
     size_t numChildren() const { return children_.size(); }
     std::shared_ptr<Domain> child(unsigned index) { return children_.at(index); }
@@ -232,7 +253,7 @@ public:
 
     void writeDomaincfg(uint32_t value) {
         domaincfg_.value = value;
-        domaincfg_.legalize();
+        domaincfg_.legalize(dm0_ok_, dm1_ok_, be0_ok_, be1_ok_);
         if (domaincfg_.fields.dm == Direct)
           genmsi_.value = 0;
         runCallbacksAsRequired();
@@ -427,11 +448,17 @@ public:
 
     uint32_t readSetipnumLe() const { return 0; }
 
-    void writeSetipnumLe(uint32_t value) { writeSetipnum(value); }
+    void writeSetipnumLe(uint32_t value) {
+        if (be0_ok_)
+            writeSetipnum(value);
+    }
 
     uint32_t readSetipnumBe() const { return 0; }
 
-    void writeSetipnumBe(uint32_t value) { writeSetipnum(value); }
+    void writeSetipnumBe(uint32_t value) {
+        if (be1_ok_)
+            writeSetipnum(value);
+    }
 
     uint32_t readGenmsi() const { return genmsi_.value; }
 
@@ -441,7 +468,7 @@ public:
         if (genmsi_.fields.busy)
             return;
         genmsi_.value = value;
-        genmsi_.legalize();
+        genmsi_.legalize(eiidlen_);
         genmsi_.fields.busy = 1;
     }
 
@@ -451,7 +478,7 @@ public:
         if (not sourceIsActive(i))
             return;
         Target target{value};
-        target.legalize(privilege_, DeliveryMode(domaincfg_.fields.dm), hart_indices_);
+        target.legalize(privilege_, DeliveryMode(domaincfg_.fields.dm), ipriolen_, eiidlen_);
         target_[i] = target;
         updateTopi();
         runCallbacksAsRequired();
@@ -474,7 +501,8 @@ public:
     uint32_t readIthreshold(unsigned hart_index) const { return idcs_.at(hart_index).ithreshold; }
 
     void writeIthreshold(unsigned hart_index, uint32_t value) {
-        idcs_.at(hart_index).ithreshold = value; // TODO: must implement exactly IPRIOLEN bits
+        value &= (1 << ipriolen_) - 1;
+        idcs_.at(hart_index).ithreshold = value;
         updateTopi();
     }
 
@@ -498,7 +526,11 @@ public:
     void writeClaimi(unsigned /*hart_index*/, uint32_t /*value*/) {}
 
 private:
-    Domain(const Aplic *aplic, std::string_view name, std::shared_ptr<Domain> parent, uint64_t base, uint64_t size, Privilege privilege, std::span<const unsigned> hart_indices);
+    Domain(
+        const Aplic *aplic,
+        std::shared_ptr<Domain> parent,
+        const DomainParams& domain_params
+    );
     Domain(const Domain&) = delete;
     Domain& operator=(const Domain&) = delete;
 
@@ -794,6 +826,13 @@ private:
 
     bool enabled(unsigned i) const { return bool((setie_.at(i/32) >> (i % 32)) & 1); }
     bool pending(unsigned i) const { return bool((setip_.at(i/32) >> (i % 32)) & 1); }
+
+    const unsigned ipriolen_;
+    const unsigned eiidlen_;
+    const bool dm0_ok_;
+    const bool dm1_ok_;
+    const bool be0_ok_;
+    const bool be1_ok_;
 
     const Aplic * aplic_;
     std::string name_;

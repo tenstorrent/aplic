@@ -54,10 +54,10 @@ The `Aplic` constructor requires:
 - The parameters for each of the interrupt domains belonging to the APLIC
 
 The parameters for each interrupt domain are specified using the `DomainParams`
-type. The constructor is provided with a list (`std::array`, `std::vector`, or
-C-style array) of `DomainParams`, one for each domain. The items in this list
-may be in any order. For more information about domain parameters, see the
-"Domain Parameters" section.
+type. The `Aplic` constructor is provided with a list (`std::array`,
+`std::vector`, or C-style array) of `DomainParams`, one for each domain. The
+items in this list may be in any order. For more information about domain
+parameters, see the "Domain Parameters" section.
 
 Note that if the interrupt source count is `N`, then the interrupt source IDs
 will be 1 to `N`.
@@ -132,7 +132,11 @@ type and consists of the following:
 - The base address of the domain's control region
 - The size of the domain's control region
 - The privilege level of the domain
-- The hart indices which belong to the domain
+- The indices of the harts included in the domain
+- Parameters which indicate implementation details such as:
+  - The number of implemented bits for the `iprio` and `eiid` fields of target CSRs
+  - The supported delivery modes
+  - The supported endianness modes
 
 Each domain must be given a unique name. Non-root domains identify their parent
 by name. The root domain, having no parent, must use a value of `std::nullopt`.
@@ -157,12 +161,17 @@ supervisor-level domains respectively. As per the spec, the root domain must be
 at machine-level, and the parent of any supervisor-level domain must be a
 machine-level domain.
 
-The `hart_indices` parameter indicates which harts belong to this domain. These
-will constitute the legal values for the hart index field of the target CSR and
-the genmsi CSR in the case of MSI delivery mode. As per the spec, a hart may
-only belong to one domain at each privilege level, and any harts which belong
-to a supervisor-level domain must also belong to its machine-level parent
-domain.
+The `hart_indices` parameter indicates which harts are included in this domain.
+When a domain is in direct delivery mode, interrupts can only be sent to harts
+included in the domain.
+
+As per the spec, when a hart's external interrupt controller is an APLIC, the
+hart may only be in one domain at each privilege level. Additionally, any harts
+included by a supervisor-level interrupt domain must be included by its
+machine-level parent.
+
+If, however, a domain is only expected to only use MSI delivery mode, this
+parameter may be omitted.
 
 ## Accessing Domain CSRs
 

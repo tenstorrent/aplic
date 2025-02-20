@@ -11,16 +11,6 @@
 
 namespace TT_APLIC {
 
-struct DomainParams {
-    std::string name;
-    std::optional<std::string> parent;
-    std::optional<size_t> child_index;
-    uint64_t base;
-    uint64_t size;
-    Privilege privilege;
-    std::vector<unsigned> hart_indices;
-};
-
 class Aplic
 {
 public:
@@ -55,14 +45,7 @@ public:
     bool autoForwardViaMsi = true;
 
 private:
-    std::shared_ptr<Domain> createDomain(
-        const std::string& name,
-        std::shared_ptr<Domain> parent,
-        uint64_t base,
-        uint64_t size,
-        Privilege privilege,
-        std::span<const unsigned> hart_indices
-    );
+    std::shared_ptr<Domain> createDomain(const DomainParams& params);
 
     unsigned num_harts_;
     unsigned num_sources_;

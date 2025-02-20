@@ -1,11 +1,8 @@
 # TODO
 
 - Add API documentation
-- Big endian support and `setipnum_le`, `setipnum_be` CSRs
 - Require that `size` of domain's control region be large enough to hold an IDC
   for each potential hart index number.
-- Add parameters for `IPRIOLEN`, `GEILEN`, and number of implemented bits for
-  `EIID` field of `genmsi`
 - Consider making various methods of `Domain` class public for convenience,
   such as `sourceIsImplemented()`, `sourceIsActive()`, `pending()`,
   `enabled()`, `parent()`, etc.

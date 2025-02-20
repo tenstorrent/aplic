@@ -3,9 +3,27 @@
 
 using namespace TT_APLIC;
 
-Domain::Domain(const Aplic *aplic, std::string_view name, std::shared_ptr<Domain> parent, uint64_t base, uint64_t size, Privilege privilege, std::span<const unsigned> hart_indices)
-    : aplic_(aplic), name_(name), parent_(parent), base_(base), size_(size), privilege_(privilege), hart_indices_(hart_indices.begin(), hart_indices.end())
+Domain::Domain(
+    const Aplic *aplic,
+    std::shared_ptr<Domain> parent,
+    const DomainParams& params
+):
+    ipriolen_(params.ipriolen),
+    eiidlen_(params.eiidlen),
+    dm0_ok_(params.direct_mode_supported),
+    dm1_ok_(params.msi_mode_supported),
+    be0_ok_(params.le_supported),
+    be1_ok_(params.be_supported),
+    aplic_(aplic),
+    name_(params.name),
+    parent_(parent),
+    base_(params.base),
+    size_(params.size),
+    privilege_(params.privilege),
+    hart_indices_(params.hart_indices)
 {
+    assert(dm0_ok_ or dm1_ok_);
+    assert(be0_ok_ or be1_ok_);
     unsigned num_harts = aplic->numHarts();
     xeip_bits_.resize(num_harts);
     idcs_.resize(num_harts);
@@ -15,6 +33,7 @@ Domain::Domain(const Aplic *aplic, std::string_view name, std::shared_ptr<Domain
 void Domain::reset()
 {
     domaincfg_ = Domaincfg{};
+    domaincfg_.legalize(dm0_ok_, dm1_ok_, be0_ok_, be1_ok_);
     mmsiaddrcfg_ = 0;
     mmsiaddrcfgh_ = Mmsiaddrcfgh{};
     smsiaddrcfg_ = 0;
@@ -49,6 +68,8 @@ void Domain::updateTopi()
     }
     for (unsigned i = 1; i <= num_sources; i++) {
         unsigned hart_index = target_[i].dm0.hart_index;
+        if (not includesHart(hart_index))
+            continue;
         unsigned priority = target_[i].dm0.iprio;
         unsigned ithreshold = idcs_[hart_index].ithreshold;
         auto& topi = idcs_[hart_index].topi;
@@ -74,6 +95,8 @@ void Domain::inferXeipBits()
         unsigned num_sources = aplic_->numSources();
         for (unsigned i = 1; i <= num_sources; i++) {
             unsigned hart_index = target_[i].dm0.hart_index;
+            if (not includesHart(hart_index))
+                continue;
             unsigned priority = target_[i].dm0.iprio;
             unsigned idelivery = idcs_[hart_index].idelivery;
             unsigned ithreshold = idcs_[hart_index].ithreshold;
